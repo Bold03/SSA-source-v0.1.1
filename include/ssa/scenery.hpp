@@ -8,6 +8,14 @@ namespace ssa {
 
 enum class ServiceType { Hangar, Jetway, Vehicle, GroundStaff, ParkingDisplay };
 
+struct AnimationChannel {
+  std::string name;
+  std::string dataref;
+  float speed{0.20f};
+  float progress{};
+  float target{};
+};
+
 struct ServiceObject {
   std::string id;
   std::string label;
@@ -20,6 +28,7 @@ struct ServiceObject {
   float speed{0.20f};
   float progress{};
   float target{};
+  std::vector<AnimationChannel> channels;
 };
 
 class SceneryManager {

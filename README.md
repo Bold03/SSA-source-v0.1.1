@@ -1,14 +1,14 @@
 # SSA — Scenery Service Animation
 
 **Developer:** BoldStudio31  
-**Status:** hangar milestone 0.3.0  
+**Status:** jetway foundation 0.4.0  
 **Targets:** X-Plane 11.50+ and X-Plane 12; Windows, Linux and macOS
 
 SSA is a standalone animation controller for scenery objects. It provides custom
 datarefs for hangars, jetways, moving vehicles, ground staff and parking
 displays. It does not depend on SAM or AutoGate.
 
-## Implemented in 0.3.0
+## Implemented in 0.4.0
 
 - Dynamic custom datarefs loaded from each scenery package's `ssa.json`.
 - Smooth open/close animation with configurable speed.
@@ -26,6 +26,11 @@ displays. It does not depend on SAM or AutoGate.
 - Open, close and toggle commands for the nearest hangar within 2 km.
 - Animation position and target survive configuration reloads.
 - Duplicate datarefs and unsupported object types are rejected safely.
+- Five independent normalized jetway animation channels.
+- Manual connect, disconnect and toggle commands for the nearest jetway.
+- Automatic jetway only operates while the aircraft is on the ground and nearly stopped.
+- Common turboprops are rejected; narrow-body aircraft receive one jetway and
+  recognized wide-bodies may receive two nearby jetways.
 
 ## Planned before a production release
 

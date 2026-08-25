@@ -34,8 +34,11 @@ double distance_m(double lat1, double lon1, double lat2, double lon2) {
 
 bool SceneryManager::load(const std::string& xplane_root) {
   std::unordered_map<std::string, std::pair<float, float>> previous_state;
-  for (const auto& object : objects_)
+  for (const auto& object : objects_) {
     previous_state.emplace(object.dataref, std::make_pair(object.progress, object.target));
+    for (const auto& channel : object.channels)
+      previous_state.emplace(channel.dataref, std::make_pair(channel.progress, channel.target));
+  }
   objects_.clear();
   last_error_.clear();
   const fs::path custom = fs::path(xplane_root) / "Custom Scenery";
@@ -58,6 +61,13 @@ bool SceneryManager::load(const std::string& xplane_root) {
     object.progress = previous->second.first;
     object.target = previous->second.second;
     if (auto* ref = refs_.find(object.dataref)) ref->set(object.progress);
+    for (auto& channel : object.channels) {
+      const auto old_channel = previous_state.find(channel.dataref);
+      if (old_channel == previous_state.end()) continue;
+      channel.progress = old_channel->second.first;
+      channel.target = old_channel->second.second;
+      if (auto* ref = refs_.find(channel.dataref)) ref->set(channel.progress);
+    }
   }
   return !objects_.empty();
 }
@@ -90,6 +100,34 @@ bool SceneryManager::load_file(const std::string& path) {
         continue;
       }
       refs_.create(object.dataref, 0.0f, false);
+      if (item.contains("channels")) {
+        for (const auto& [channel_name, channel_value] : item.at("channels").items()) {
+          AnimationChannel channel;
+          channel.name = channel_name;
+          if (channel_value.is_string()) {
+            channel.dataref = channel_value.get<std::string>();
+            channel.speed = object.speed;
+          } else {
+            channel.dataref = channel_value.at("dataref").get<std::string>();
+            channel.speed = std::clamp(channel_value.value("speed", object.speed), 0.01f, 2.0f);
+          }
+          const bool channel_duplicate = std::any_of(objects_.begin(), objects_.end(), [&](const auto& existing) {
+            if (existing.dataref == channel.dataref) return true;
+            return std::any_of(existing.channels.begin(), existing.channels.end(), [&](const auto& existing_channel) {
+              return existing_channel.dataref == channel.dataref;
+            });
+          }) || channel.dataref == object.dataref ||
+          std::any_of(object.channels.begin(), object.channels.end(), [&](const auto& existing_channel) {
+            return existing_channel.dataref == channel.dataref;
+          });
+          if (channel_duplicate) {
+            last_error_ = path + ": duplicate channel dataref '" + channel.dataref + "'";
+            continue;
+          }
+          refs_.create(channel.dataref, 0.0f, false);
+          object.channels.push_back(std::move(channel));
+        }
+      }
       objects_.push_back(std::move(object));
     }
     return true;
@@ -104,6 +142,22 @@ void SceneryManager::update(float elapsed_seconds, bool suppress_ground_services
     if (suppress_ground_services &&
         (object.type == ServiceType::Vehicle || object.type == ServiceType::GroundStaff)) {
       object.target = 0.0f;
+    }
+    if (!object.channels.empty()) {
+      float total = 0.0f;
+      for (auto& channel : object.channels) {
+        channel.target = object.target;
+        const float channel_step = std::max(0.0f, channel.speed * elapsed_seconds);
+        if (channel.progress < channel.target)
+          channel.progress = std::min(channel.target, channel.progress + channel_step);
+        else if (channel.progress > channel.target)
+          channel.progress = std::max(channel.target, channel.progress - channel_step);
+        if (auto* ref = refs_.find(channel.dataref)) ref->set(channel.progress);
+        total += channel.progress;
+      }
+      object.progress = total / static_cast<float>(object.channels.size());
+      if (auto* ref = refs_.find(object.dataref)) ref->set(object.progress);
+      continue;
     }
     const float step = std::max(0.0f, object.speed * elapsed_seconds);
     if (object.progress < object.target) object.progress = std::min(object.target, object.progress + step);

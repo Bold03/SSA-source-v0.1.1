@@ -53,10 +53,10 @@ void Tablet::draw_impl() {
   int y = t - 165;
   for (size_t i = 0; i < std::min<size_t>(list.size(), 8); ++i, y -= 34) {
     const auto* object = list[i];
-    const char* state = "CLOSED";
-    if (object->progress >= 0.999f) state = "OPEN";
-    else if (object->target > object->progress) state = "OPENING";
-    else if (object->target < object->progress) state = "CLOSING";
+    const char* state = tab_ == 0 ? "CLOSED" : "PARKED";
+    if (object->progress >= 0.999f) state = tab_ == 0 ? "OPEN" : "CONNECTED";
+    else if (object->target > object->progress) state = tab_ == 0 ? "OPENING" : "CONNECTING";
+    else if (object->target < object->progress) state = tab_ == 0 ? "CLOSING" : "DISCONNECTING";
     char line[180];
     std::snprintf(line, sizeof(line), "%zu. %s   %s  %3.0f%%", i + 1,
                   object->label.c_str(), state, object->progress * 100.0f);

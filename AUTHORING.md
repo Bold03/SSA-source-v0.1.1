@@ -12,7 +12,11 @@ Custom Scenery/My Airport/objects/...
 Use `examples/ssa.json` as the starting point. Every `id` and `dataref` must be
 unique. Prefer this naming convention:
 
-`boldstudio31/ssa/ICAO/object_id`
+`boldstudio31/ssa/animation/scenery_id/object_id`
+
+Use a short unique scenery ID rather than an airport ICAO. Example:
+
+`boldstudio31/ssa/animation/test_ssa/hangar_door_01`
 
 ## Blender / XPlane2Blender
 
@@ -36,9 +40,15 @@ Animate every service over a normalized value from **0.0 (parked/closed)** to
 - `cabin_head`: final yaw/height
 - `wheel_bogie`: follows extension and height
 
-For the first build, keyframe all parts against one normalized deployment
-dataref. Later SSA versions will add separate yaw, extension and height channels
-for geometry-based docking.
+Jetways use separate normalized channels from 0.0 (parked) to 1.0 (connected):
+
+- `rotunda_ratio`: rotunda yaw.
+- `extension_ratio`: tunnel extension.
+- `height_ratio`: tunnel/cabin height.
+- `cabin_yaw_ratio`: cabin alignment.
+- `wheel_rotation_ratio`: visible bogie wheel movement.
+
+See `examples/ssa.json` for complete channel dataref names and speeds.
 
 ### Moving car recommendation
 
@@ -64,4 +74,3 @@ coordinates. Aircraft without a profile will use a safe one-jetway fallback.
 
 Do not animate the same object with SSA and SAM/AutoGate simultaneously. SSA is
 standalone; this prevents two plugins from writing competing animation states.
-

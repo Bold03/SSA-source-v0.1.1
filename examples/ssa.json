@@ -10,7 +10,7 @@
       "longitude": 106.8902,
       "radius_m": 2000,
       "speed": 0.16,
-      "dataref": "boldstudio31/ssa/WIHH/hangar_squadron_01"
+      "dataref": "boldstudio31/ssa/animation/example_wihh/hangar_door_01"
     },
     {
       "id": "jetway_gate_a1",
@@ -20,8 +20,29 @@
       "longitude": 106.8910,
       "radius_m": 35,
       "speed": 0.12,
-      "dataref": "boldstudio31/ssa/WIHH/jetway_gate_a1"
+      "dataref": "boldstudio31/ssa/animation/example_wihh/jetway_01/state",
+      "channels": {
+        "rotunda": {
+          "dataref": "boldstudio31/ssa/animation/example_wihh/jetway_01/rotunda_ratio",
+          "speed": 0.10
+        },
+        "extension": {
+          "dataref": "boldstudio31/ssa/animation/example_wihh/jetway_01/extension_ratio",
+          "speed": 0.08
+        },
+        "height": {
+          "dataref": "boldstudio31/ssa/animation/example_wihh/jetway_01/height_ratio",
+          "speed": 0.10
+        },
+        "cabin_yaw": {
+          "dataref": "boldstudio31/ssa/animation/example_wihh/jetway_01/cabin_yaw_ratio",
+          "speed": 0.12
+        },
+        "wheel_rotation": {
+          "dataref": "boldstudio31/ssa/animation/example_wihh/jetway_01/wheel_rotation_ratio",
+          "speed": 0.25
+        }
+      }
     }
   ]
 }
-
