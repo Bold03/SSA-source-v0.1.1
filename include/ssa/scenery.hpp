@@ -26,7 +26,7 @@ class SceneryManager {
 public:
   explicit SceneryManager(DataRefRegistry& refs) : refs_(refs) {}
   bool load(const std::string& xplane_root);
-  void update(float elapsed_seconds);
+  void update(float elapsed_seconds, bool suppress_ground_services = false);
   std::vector<ServiceObject*> nearby(ServiceType type, double lat, double lon, double radius_m);
   std::vector<ServiceObject>& objects() { return objects_; }
   const std::string& last_error() const { return last_error_; }
@@ -39,4 +39,3 @@ private:
 };
 
 } // namespace ssa
-

@@ -1,14 +1,14 @@
 # SSA — Scenery Service Animation
 
 **Developer:** BoldStudio31  
-**Status:** foundation build 0.1.1  
+**Status:** foundation build 0.2.0  
 **Targets:** X-Plane 11.50+ and X-Plane 12; Windows, Linux and macOS
 
 SSA is a standalone animation controller for scenery objects. It provides custom
 datarefs for hangars, jetways, moving vehicles, ground staff, parking displays
 and digital billboards. It does not depend on SAM or AutoGate.
 
-## Implemented in 0.1.1
+## Implemented in 0.2.0
 
 - Dynamic custom datarefs loaded from each scenery package's `ssa.json`.
 - Smooth open/close animation with configurable speed.
@@ -18,6 +18,10 @@ and digital billboards. It does not depend on SAM or AutoGate.
   receive one front jetway.
 - GitHub Actions builds for Windows, Linux and universal macOS.
 - Windows `NOMINMAX` protection so MSVC does not replace `std::min/std::max`.
+- Automatic RealOps detection through its plugin signature and visible tablet status.
+- RealOps safety suppression for future SSA vehicle and ground-staff objects.
+- Configuration reload from the tablet, plugin menu, command, or scenery reload.
+- Loaded-object count in the tablet and `Log.txt`.
 
 ## Planned before a production release
 
@@ -27,8 +31,7 @@ and digital billboards. It does not depend on SAM or AutoGate.
 - Cross-platform positional announcement audio with distance attenuation.
 - Vehicle paths/wheel rotation, ground-staff sequences, parking display text,
   billboard content and a polished textured tablet UI.
-- An explicit compatibility adapter after the exact “Plugin Ops” product/API is
-  identified.
+- Deeper RealOps integration if its developers publish a supported inter-plugin API.
 
 ## Build without Visual Studio
 

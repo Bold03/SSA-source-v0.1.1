@@ -16,8 +16,10 @@ std::unique_ptr<ssa::Tablet> tablet;
 ssa::FloatDataRef* automatic_ref{};
 XPLMDataRef lat_ref{}, lon_ref{}, icao_ref{}, prop_ref{};
 XPLMCommandRef tablet_command{};
+XPLMCommandRef reload_command{};
 XPLMMenuID menu{};
-int menu_item{};
+bool realops_detected{};
+float compatibility_timer{};
 
 void log(const std::string& message) { XPLMDebugString(("[SSA] " + message + "\n").c_str()); }
 
@@ -31,14 +33,44 @@ int command_handler(XPLMCommandRef, XPLMCommandPhase phase, void*) {
   return 1;
 }
 
-void menu_handler(void*, void*) { if (tablet) tablet->toggle(); }
+void reload_scenery() {
+  if (!scenery) return;
+  char root[2048]{};
+  XPLMGetSystemPath(root);
+  const bool loaded = scenery->load(root);
+  log("Configuration reloaded: " + std::to_string(scenery->objects().size()) +
+      " object(s)" + (loaded ? "" : " (none found)"));
+}
+
+int reload_handler(XPLMCommandRef, XPLMCommandPhase phase, void*) {
+  if (phase == xplm_CommandBegin) reload_scenery();
+  return 1;
+}
+
+void menu_handler(void*, void* item_ref) {
+  if (item_ref == reinterpret_cast<void*>(1)) {
+    if (tablet) tablet->toggle();
+  } else if (item_ref == reinterpret_cast<void*>(2)) {
+    reload_scenery();
+  }
+}
 
 float flight_loop(float elapsed, float, int, void*) {
   if (!scenery || !tablet) return 1.0f;
   const double lat = lat_ref ? XPLMGetDatad(lat_ref) : 0.0;
   const double lon = lon_ref ? XPLMGetDatad(lon_ref) : 0.0;
   tablet->set_position(lat, lon);
-  scenery->update(elapsed);
+  compatibility_timer += elapsed;
+  if (compatibility_timer >= 1.0f) {
+    compatibility_timer = 0.0f;
+    const bool detected = XPLMFindPluginBySignature("realops") != XPLM_NO_PLUGIN_ID;
+    if (detected != realops_detected) {
+      realops_detected = detected;
+      log(std::string("RealOps compatibility ") + (detected ? "active" : "inactive"));
+    }
+    tablet->set_realops(realops_detected);
+  }
+  scenery->update(elapsed, realops_detected);
 
   // MVP automatic rule. Aircraft profiles/door geometry will refine wide-body selection.
   if (automatic_ref->value() > 0.5f) {
@@ -65,7 +97,7 @@ PLUGIN_API int XPluginStart(char* name, char* signature, char* description) {
     char root[2048]{};
     XPLMGetSystemPath(root);
     scenery->load(root);
-    tablet = std::make_unique<ssa::Tablet>(*scenery, toggle_auto);
+    tablet = std::make_unique<ssa::Tablet>(*scenery, toggle_auto, reload_scenery);
 
     lat_ref = XPLMFindDataRef("sim/flightmodel/position/latitude");
     lon_ref = XPLMFindDataRef("sim/flightmodel/position/longitude");
@@ -74,12 +106,14 @@ PLUGIN_API int XPluginStart(char* name, char* signature, char* description) {
 
     tablet_command = XPLMCreateCommand("boldstudio31/ssa/tablet/toggle", "Toggle SSA tablet");
     XPLMRegisterCommandHandler(tablet_command, command_handler, 1, nullptr);
+    reload_command = XPLMCreateCommand("boldstudio31/ssa/config/reload", "Reload SSA scenery configuration");
+    XPLMRegisterCommandHandler(reload_command, reload_handler, 1, nullptr);
     const int parent = XPLMAppendMenuItem(XPLMFindPluginsMenu(), "SSA", nullptr, 0);
     menu = XPLMCreateMenu("SSA", XPLMFindPluginsMenu(), parent, menu_handler, nullptr);
-    menu_item = XPLMAppendMenuItem(menu, "Open tablet", nullptr, 0);
-    (void)menu_item;
+    XPLMAppendMenuItem(menu, "Open tablet", reinterpret_cast<void*>(1), 0);
+    XPLMAppendMenuItem(menu, "Reload scenery configuration", reinterpret_cast<void*>(2), 0);
     XPLMRegisterFlightLoopCallback(flight_loop, 0.05f, nullptr);
-    log("SSA 0.1.1 started");
+    log("SSA 0.2.0 started: " + std::to_string(scenery->objects().size()) + " object(s)");
     return 1;
   } catch (const std::exception& e) {
     log(std::string("Start failed: ") + e.what());
@@ -90,6 +124,7 @@ PLUGIN_API int XPluginStart(char* name, char* signature, char* description) {
 PLUGIN_API void XPluginStop() {
   XPLMUnregisterFlightLoopCallback(flight_loop, nullptr);
   if (tablet_command) XPLMUnregisterCommandHandler(tablet_command, command_handler, 1, nullptr);
+  if (reload_command) XPLMUnregisterCommandHandler(reload_command, reload_handler, 1, nullptr);
   if (menu) XPLMDestroyMenu(menu);
   tablet.reset();
   scenery.reset();
@@ -98,4 +133,6 @@ PLUGIN_API void XPluginStop() {
 
 PLUGIN_API int XPluginEnable() { return 1; }
 PLUGIN_API void XPluginDisable() {}
-PLUGIN_API void XPluginReceiveMessage(XPLMPluginID, int, void*) {}
+PLUGIN_API void XPluginReceiveMessage(XPLMPluginID, int message, void*) {
+  if (message == XPLM_MSG_SCENERY_LOADED) reload_scenery();
+}

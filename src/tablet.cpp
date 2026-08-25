@@ -11,8 +11,10 @@ void label(int x, int y, const char* text, float r = 0.90f, float g = 0.95f, flo
 }
 }
 
-Tablet::Tablet(SceneryManager& scenery, std::function<void()> toggle_auto)
-    : scenery_(scenery), toggle_auto_(std::move(toggle_auto)) {
+Tablet::Tablet(SceneryManager& scenery, std::function<void()> toggle_auto,
+               std::function<void()> reload_config)
+    : scenery_(scenery), toggle_auto_(std::move(toggle_auto)),
+      reload_config_(std::move(reload_config)) {
   XPLMCreateWindow_t params{};
   params.structSize = sizeof(params);
   params.left = 100; params.top = 700; params.right = 470; params.bottom = 220;
@@ -57,13 +59,23 @@ void Tablet::draw_impl() {
     label(l + 26, y, line);
   }
   if (list.empty()) label(l + 26, y, "No SSA object found in range.", 1.0f, 0.65f, 0.35f);
-  label(l + 22, b + 22, "Click tabs, AUTO text, or an object row");
+  char status[160];
+  std::snprintf(status, sizeof(status), "RealOps: %s  |  Objects: %zu",
+                realops_detected_ ? "COMPATIBILITY ACTIVE" : "not detected",
+                scenery_.objects().size());
+  label(l + 22, b + 42, status,
+        realops_detected_ ? 0.25f : 0.70f, realops_detected_ ? 0.95f : 0.75f, 0.65f);
+  label(r - 92, b + 20, "[ RELOAD ]", 0.25f, 0.95f, 0.65f);
 }
 
 int Tablet::mouse_impl(int x, int y, XPLMMouseStatus status) {
   if (status != xplm_MouseDown) return 1;
   int l, t, r, b;
   XPLMGetWindowGeometry(window_, &l, &t, &r, &b);
+  if (y > b + 5 && y < b + 38 && x > r - 125) {
+    reload_config_();
+    return 1;
+  }
   if (y < t - 45 && y > t - 85) { tab_ = x < l + 155 ? 0 : 1; return 1; }
   if (tab_ == 1 && y < t - 85 && y > t - 145) { toggle_auto_(); return 1; }
   const int index = (t - 145 - y) / 34;
@@ -75,4 +87,3 @@ int Tablet::mouse_impl(int x, int y, XPLMMouseStatus status) {
 }
 
 } // namespace ssa
-

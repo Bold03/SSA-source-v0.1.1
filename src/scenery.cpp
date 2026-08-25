@@ -76,8 +76,12 @@ bool SceneryManager::load_file(const std::string& path) {
   }
 }
 
-void SceneryManager::update(float elapsed_seconds) {
+void SceneryManager::update(float elapsed_seconds, bool suppress_ground_services) {
   for (auto& object : objects_) {
+    if (suppress_ground_services &&
+        (object.type == ServiceType::Vehicle || object.type == ServiceType::GroundStaff)) {
+      object.target = 0.0f;
+    }
     const float step = std::max(0.0f, object.speed * elapsed_seconds);
     if (object.progress < object.target) object.progress = std::min(object.target, object.progress + step);
     else if (object.progress > object.target) object.progress = std::max(object.target, object.progress - step);
@@ -98,4 +102,3 @@ std::vector<ServiceObject*> SceneryManager::nearby(ServiceType type, double lat,
 }
 
 } // namespace ssa
-

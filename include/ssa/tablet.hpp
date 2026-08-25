@@ -8,12 +8,14 @@ namespace ssa {
 
 class Tablet {
 public:
-  Tablet(SceneryManager& scenery, std::function<void()> toggle_auto);
+  Tablet(SceneryManager& scenery, std::function<void()> toggle_auto,
+         std::function<void()> reload_config);
   ~Tablet();
   void toggle();
   bool visible() const;
   void set_position(double latitude, double longitude);
   void set_auto(bool enabled) { automatic_ = enabled; }
+  void set_realops(bool detected) { realops_detected_ = detected; }
 
 private:
   static void draw(XPLMWindowID id, void* refcon);
@@ -23,11 +25,12 @@ private:
   XPLMWindowID window_{};
   SceneryManager& scenery_;
   std::function<void()> toggle_auto_;
+  std::function<void()> reload_config_;
   double latitude_{};
   double longitude_{};
   bool automatic_{true};
+  bool realops_detected_{};
   int tab_{};
 };
 
 } // namespace ssa
-
