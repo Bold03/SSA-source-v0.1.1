@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "airport": "WIHH",
+  "objects": [
+    {
+      "id": "hangar_squadron_01",
+      "label": "Squadron Hangar 01",
+      "type": "hangar",
+      "latitude": -6.2661,
+      "longitude": 106.8902,
+      "radius_m": 2000,
+      "speed": 0.16,
+      "dataref": "boldstudio31/ssa/WIHH/hangar_squadron_01"
+    },
+    {
+      "id": "jetway_gate_a1",
+      "label": "Gate A1 Jetway 1",
+      "type": "jetway",
+      "latitude": -6.2665,
+      "longitude": 106.8910,
+      "radius_m": 35,
+      "speed": 0.12,
+      "dataref": "boldstudio31/ssa/WIHH/jetway_gate_a1"
+    }
+  ]
+}
+
