@@ -6,7 +6,7 @@
 
 namespace ssa {
 
-enum class ServiceType { Hangar, Jetway, Vehicle, GroundStaff, ParkingDisplay, Billboard };
+enum class ServiceType { Hangar, Jetway, Vehicle, GroundStaff, ParkingDisplay };
 
 struct ServiceObject {
   std::string id;

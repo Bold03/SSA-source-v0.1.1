@@ -17,9 +17,13 @@ ssa::FloatDataRef* automatic_ref{};
 XPLMDataRef lat_ref{}, lon_ref{}, icao_ref{}, prop_ref{};
 XPLMCommandRef tablet_command{};
 XPLMCommandRef reload_command{};
+XPLMCommandRef hangar_toggle_command{};
+XPLMCommandRef hangar_open_command{};
+XPLMCommandRef hangar_close_command{};
 XPLMMenuID menu{};
 bool realops_detected{};
 float compatibility_timer{};
+int action_toggle{}, action_open{1}, action_close{2};
 
 void log(const std::string& message) { XPLMDebugString(("[SSA] " + message + "\n").c_str()); }
 
@@ -47,11 +51,36 @@ int reload_handler(XPLMCommandRef, XPLMCommandPhase phase, void*) {
   return 1;
 }
 
+bool control_nearest_hangar(int action) {
+  if (!scenery) return false;
+  const double lat = lat_ref ? XPLMGetDatad(lat_ref) : 0.0;
+  const double lon = lon_ref ? XPLMGetDatad(lon_ref) : 0.0;
+  auto nearby = scenery->nearby(ssa::ServiceType::Hangar, lat, lon, 2000.0);
+  if (nearby.empty()) {
+    log("No hangar found within 2 km");
+    return false;
+  }
+  auto* hangar = nearby.front();
+  if (action == action_open) hangar->target = 1.0f;
+  else if (action == action_close) hangar->target = 0.0f;
+  else hangar->target = hangar->target > 0.5f ? 0.0f : 1.0f;
+  log("Nearest hangar '" + hangar->label + "' target: " +
+      (hangar->target > 0.5f ? "OPEN" : "CLOSED"));
+  return true;
+}
+
+int hangar_handler(XPLMCommandRef, XPLMCommandPhase phase, void* refcon) {
+  if (phase == xplm_CommandBegin) control_nearest_hangar(*static_cast<int*>(refcon));
+  return 1;
+}
+
 void menu_handler(void*, void* item_ref) {
   if (item_ref == reinterpret_cast<void*>(1)) {
     if (tablet) tablet->toggle();
   } else if (item_ref == reinterpret_cast<void*>(2)) {
     reload_scenery();
+  } else if (item_ref == reinterpret_cast<void*>(3)) {
+    control_nearest_hangar(action_toggle);
   }
 }
 
@@ -108,12 +137,19 @@ PLUGIN_API int XPluginStart(char* name, char* signature, char* description) {
     XPLMRegisterCommandHandler(tablet_command, command_handler, 1, nullptr);
     reload_command = XPLMCreateCommand("boldstudio31/ssa/config/reload", "Reload SSA scenery configuration");
     XPLMRegisterCommandHandler(reload_command, reload_handler, 1, nullptr);
+    hangar_toggle_command = XPLMCreateCommand("boldstudio31/ssa/hangar/nearest_toggle", "Toggle nearest SSA hangar");
+    hangar_open_command = XPLMCreateCommand("boldstudio31/ssa/hangar/nearest_open", "Open nearest SSA hangar");
+    hangar_close_command = XPLMCreateCommand("boldstudio31/ssa/hangar/nearest_close", "Close nearest SSA hangar");
+    XPLMRegisterCommandHandler(hangar_toggle_command, hangar_handler, 1, &action_toggle);
+    XPLMRegisterCommandHandler(hangar_open_command, hangar_handler, 1, &action_open);
+    XPLMRegisterCommandHandler(hangar_close_command, hangar_handler, 1, &action_close);
     const int parent = XPLMAppendMenuItem(XPLMFindPluginsMenu(), "SSA", nullptr, 0);
     menu = XPLMCreateMenu("SSA", XPLMFindPluginsMenu(), parent, menu_handler, nullptr);
     XPLMAppendMenuItem(menu, "Open tablet", reinterpret_cast<void*>(1), 0);
     XPLMAppendMenuItem(menu, "Reload scenery configuration", reinterpret_cast<void*>(2), 0);
+    XPLMAppendMenuItem(menu, "Toggle nearest hangar", reinterpret_cast<void*>(3), 0);
     XPLMRegisterFlightLoopCallback(flight_loop, 0.05f, nullptr);
-    log("SSA 0.2.0 started: " + std::to_string(scenery->objects().size()) + " object(s)");
+    log("SSA 0.3.0 started: " + std::to_string(scenery->objects().size()) + " object(s)");
     return 1;
   } catch (const std::exception& e) {
     log(std::string("Start failed: ") + e.what());
@@ -125,6 +161,9 @@ PLUGIN_API void XPluginStop() {
   XPLMUnregisterFlightLoopCallback(flight_loop, nullptr);
   if (tablet_command) XPLMUnregisterCommandHandler(tablet_command, command_handler, 1, nullptr);
   if (reload_command) XPLMUnregisterCommandHandler(reload_command, reload_handler, 1, nullptr);
+  if (hangar_toggle_command) XPLMUnregisterCommandHandler(hangar_toggle_command, hangar_handler, 1, &action_toggle);
+  if (hangar_open_command) XPLMUnregisterCommandHandler(hangar_open_command, hangar_handler, 1, &action_open);
+  if (hangar_close_command) XPLMUnregisterCommandHandler(hangar_close_command, hangar_handler, 1, &action_close);
   if (menu) XPLMDestroyMenu(menu);
   tablet.reset();
   scenery.reset();

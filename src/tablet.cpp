@@ -53,9 +53,13 @@ void Tablet::draw_impl() {
   int y = t - 165;
   for (size_t i = 0; i < std::min<size_t>(list.size(), 8); ++i, y -= 34) {
     const auto* object = list[i];
+    const char* state = "CLOSED";
+    if (object->progress >= 0.999f) state = "OPEN";
+    else if (object->target > object->progress) state = "OPENING";
+    else if (object->target < object->progress) state = "CLOSING";
     char line[180];
-    std::snprintf(line, sizeof(line), "%zu. %s   [%s]  %3.0f%%", i + 1, object->label.c_str(),
-                  object->target > 0.5f ? "CLOSE" : "OPEN", object->progress * 100.0f);
+    std::snprintf(line, sizeof(line), "%zu. %s   %s  %3.0f%%", i + 1,
+                  object->label.c_str(), state, object->progress * 100.0f);
     label(l + 26, y, line);
   }
   if (list.empty()) label(l + 26, y, "No SSA object found in range.", 1.0f, 0.65f, 0.35f);

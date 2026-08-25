@@ -1,14 +1,14 @@
 # SSA — Scenery Service Animation
 
 **Developer:** BoldStudio31  
-**Status:** foundation build 0.2.0  
+**Status:** hangar milestone 0.3.0  
 **Targets:** X-Plane 11.50+ and X-Plane 12; Windows, Linux and macOS
 
 SSA is a standalone animation controller for scenery objects. It provides custom
-datarefs for hangars, jetways, moving vehicles, ground staff, parking displays
-and digital billboards. It does not depend on SAM or AutoGate.
+datarefs for hangars, jetways, moving vehicles, ground staff and parking
+displays. It does not depend on SAM or AutoGate.
 
-## Implemented in 0.2.0
+## Implemented in 0.3.0
 
 - Dynamic custom datarefs loaded from each scenery package's `ssa.json`.
 - Smooth open/close animation with configurable speed.
@@ -22,6 +22,10 @@ and digital billboards. It does not depend on SAM or AutoGate.
 - RealOps safety suppression for future SSA vehicle and ground-staff objects.
 - Configuration reload from the tablet, plugin menu, command, or scenery reload.
 - Loaded-object count in the tablet and `Log.txt`.
+- Hangar state labels: CLOSED, OPENING, OPEN and CLOSING.
+- Open, close and toggle commands for the nearest hangar within 2 km.
+- Animation position and target survive configuration reloads.
+- Duplicate datarefs and unsupported object types are rejected safely.
 
 ## Planned before a production release
 
@@ -29,8 +33,8 @@ and digital billboards. It does not depend on SAM or AutoGate.
 - Wide-body multi-jetway assignment and collision/occupancy checks.
 - SimBrief Pilot ID login, OFP state machine and departure/arrival triggers.
 - Cross-platform positional announcement audio with distance attenuation.
-- Vehicle paths/wheel rotation, ground-staff sequences, parking display text,
-  billboard content and a polished textured tablet UI.
+- Vehicle paths/wheel rotation, ground-staff sequences, parking display text
+  and a polished textured tablet UI.
 - Deeper RealOps integration if its developers publish a supported inter-plugin API.
 
 ## Build without Visual Studio

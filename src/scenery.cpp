@@ -4,19 +4,21 @@
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <unordered_map>
 
 namespace fs = std::filesystem;
 using json = nlohmann::json;
 
 namespace ssa {
 namespace {
-ServiceType parse_type(const std::string& value) {
-  if (value == "jetway") return ServiceType::Jetway;
-  if (value == "vehicle") return ServiceType::Vehicle;
-  if (value == "ground_staff") return ServiceType::GroundStaff;
-  if (value == "parking_display") return ServiceType::ParkingDisplay;
-  if (value == "billboard") return ServiceType::Billboard;
-  return ServiceType::Hangar;
+bool parse_type(const std::string& value, ServiceType& result) {
+  if (value == "hangar") result = ServiceType::Hangar;
+  else if (value == "jetway") result = ServiceType::Jetway;
+  else if (value == "vehicle") result = ServiceType::Vehicle;
+  else if (value == "ground_staff") result = ServiceType::GroundStaff;
+  else if (value == "parking_display") result = ServiceType::ParkingDisplay;
+  else return false;
+  return true;
 }
 
 double distance_m(double lat1, double lon1, double lat2, double lon2) {
@@ -31,6 +33,9 @@ double distance_m(double lat1, double lon1, double lat2, double lon2) {
 } // namespace
 
 bool SceneryManager::load(const std::string& xplane_root) {
+  std::unordered_map<std::string, std::pair<float, float>> previous_state;
+  for (const auto& object : objects_)
+    previous_state.emplace(object.dataref, std::make_pair(object.progress, object.target));
   objects_.clear();
   last_error_.clear();
   const fs::path custom = fs::path(xplane_root) / "Custom Scenery";
@@ -47,6 +52,13 @@ bool SceneryManager::load(const std::string& xplane_root) {
   } catch (const std::exception& e) {
     last_error_ = e.what();
   }
+  for (auto& object : objects_) {
+    const auto previous = previous_state.find(object.dataref);
+    if (previous == previous_state.end()) continue;
+    object.progress = previous->second.first;
+    object.target = previous->second.second;
+    if (auto* ref = refs_.find(object.dataref)) ref->set(object.progress);
+  }
   return !objects_.empty();
 }
 
@@ -60,12 +72,23 @@ bool SceneryManager::load_file(const std::string& path) {
       object.id = item.at("id").get<std::string>();
       object.label = item.value("label", object.id);
       object.airport = airport;
-      object.type = parse_type(item.value("type", "hangar"));
+      const std::string type_name = item.value("type", "hangar");
+      if (!parse_type(type_name, object.type)) {
+        last_error_ = path + ": unsupported object type '" + type_name + "'";
+        continue;
+      }
       object.latitude = item.at("latitude").get<double>();
       object.longitude = item.at("longitude").get<double>();
       object.radius_m = item.value("radius_m", object.type == ServiceType::Hangar ? 2000.0f : 35.0f);
-      object.speed = item.value("speed", 0.20f);
+      object.speed = std::clamp(item.value("speed", 0.20f), 0.01f, 2.0f);
       object.dataref = item.value("dataref", "boldstudio31/ssa/" + airport + "/" + object.id);
+      const bool duplicate = std::any_of(objects_.begin(), objects_.end(), [&](const auto& existing) {
+        return existing.dataref == object.dataref;
+      });
+      if (duplicate) {
+        last_error_ = path + ": duplicate dataref '" + object.dataref + "'";
+        continue;
+      }
       refs_.create(object.dataref, 0.0f, false);
       objects_.push_back(std::move(object));
     }
