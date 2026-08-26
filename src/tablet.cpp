@@ -61,6 +61,7 @@ void Tablet::draw_impl() {
       else if (object->target < object->progress) state = "CLOSING";
     } else {
       switch (object->jetway_state) {
+        case JetwayState::WheelAligning: state = "WHEEL ALIGNING"; break;
         case JetwayState::Aligning: state = "ALIGNING"; break;
         case JetwayState::Approaching: state = "APPROACHING"; break;
         case JetwayState::Sealing: state = "SEALING"; break;

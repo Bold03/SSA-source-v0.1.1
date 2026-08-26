@@ -8,7 +8,9 @@
 namespace ssa {
 
 enum class ServiceType { Hangar, Jetway, Vehicle, GroundStaff, ParkingDisplay };
-enum class JetwayState { Parked, Aligning, Approaching, Sealing, Connected, OutOfRange, Parking };
+enum class JetwayState {
+  Parked, WheelAligning, Aligning, Approaching, Sealing, Connected, OutOfRange, Parking
+};
 
 struct AnimationChannel {
   std::string name;
@@ -31,7 +33,7 @@ struct JetwayKinematics {
   float height_pivot_z_m{0.05581f};
   float tunnel_parked_x_m{-14.0849003f};
   float extension_x_m{-10.7840999f};
-  float head_x_m{-5.010006f};
+  float head_x_m{-4.505846f};
   float head_y_m{-1.5702132f};
   float head_z_m{};
   float rotunda_degrees{90.000207f};

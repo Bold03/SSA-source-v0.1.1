@@ -108,7 +108,7 @@ bool SceneryManager::load_file(const std::string& path) {
         object.kinematics.height_pivot_z_m = k.value("height_pivot_z_m", 0.05581f);
         object.kinematics.tunnel_parked_x_m = k.value("tunnel_parked_x_m", -14.0849003f);
         object.kinematics.extension_x_m = k.value("extension_x_m", -10.7840999f);
-        object.kinematics.head_x_m = k.value("head_x_m", -5.010006f);
+        object.kinematics.head_x_m = k.value("head_x_m", -4.505846f);
         object.kinematics.head_y_m = k.value("head_y_m", -1.5702132f);
         object.kinematics.head_z_m = k.value("head_z_m", 0.0f);
         object.kinematics.rotunda_degrees = k.value("rotunda_degrees", 90.000207f);

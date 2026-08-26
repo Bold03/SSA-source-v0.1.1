@@ -258,12 +258,12 @@ bool apply_door_target(ssa::ServiceObject& jetway) {
   jetway.target = 1.0f;
   jetway.solution_targets = solution.ratios;
   jetway.solution_ready = true;
-  jetway.jetway_state = ssa::JetwayState::Aligning;
-  // SAM-like sequence: first point the bridge and set its height while the
-  // telescopic tunnel remains parked. Extension starts only after alignment.
-  scenery->set_channel_target(jetway, "rotunda", solution.ratios[0]);
+  jetway.jetway_state = ssa::JetwayState::WheelAligning;
+  // SAM-like sequence: steer the bogie before any bridge motion. This keeps
+  // the wheels pointing along the upcoming path instead of visually drifting.
+  scenery->set_channel_target(jetway, "rotunda", 0.0f);
   scenery->set_channel_target(jetway, "extension", 0.0f);
-  scenery->set_channel_target(jetway, "height", solution.ratios[2]);
+  scenery->set_channel_target(jetway, "height", 0.0f);
   scenery->set_channel_target(jetway, "cabin_yaw", 0.0f);
   scenery->set_channel_target(jetway, "wheel_steer", solution.ratios[0]);
   scenery->set_channel_target(jetway, "wheel_rotation", 0.0f);
@@ -284,6 +284,13 @@ void advance_jetway_docking(ssa::ServiceObject& jetway) {
   const auto ratios = current_ratios(jetway);
   jetway.head_error_m = position_error(jetway.kinematics, door, ratios);
 
+  if (jetway.jetway_state == ssa::JetwayState::WheelAligning &&
+      channel_at_target(jetway, "wheel_steer")) {
+    scenery->set_channel_target(jetway, "rotunda", jetway.solution_targets[0]);
+    scenery->set_channel_target(jetway, "height", jetway.solution_targets[2]);
+    jetway.jetway_state = ssa::JetwayState::Aligning;
+    return;
+  }
   if (jetway.jetway_state == ssa::JetwayState::Aligning &&
       channel_at_target(jetway, "rotunda") && channel_at_target(jetway, "height")) {
     scenery->set_channel_target(jetway, "extension", jetway.solution_targets[1]);
@@ -374,7 +381,7 @@ bool control_nearest_jetway(int action) {
   }
   log("Nearest jetway '" + jetway->label + "' target: " +
       (jetway->jetway_state == ssa::JetwayState::OutOfRange ? "OUT OF RANGE" :
-       jetway->target > 0.5f ? "ALIGNING" : "PARKED"));
+       jetway->target > 0.5f ? "WHEEL ALIGNING" : "PARKED"));
   return true;
 }
 
@@ -525,7 +532,7 @@ PLUGIN_API int XPluginStart(char* name, char* signature, char* description) {
     XPLMAppendMenuItem(menu, "Toggle nearest hangar", reinterpret_cast<void*>(3), 0);
     XPLMAppendMenuItem(menu, "Toggle nearest jetway", reinterpret_cast<void*>(4), 0);
     XPLMRegisterFlightLoopCallback(flight_loop, 0.05f, nullptr);
-    log("SSA 0.7.0 started: " + std::to_string(scenery->objects().size()) +
+    log("SSA 0.7.1 started: " + std::to_string(scenery->objects().size()) +
         " object(s), L1 door dataref " + (door_open_ref ? "detected" : "not found"));
     return 1;
   } catch (const std::exception& e) {

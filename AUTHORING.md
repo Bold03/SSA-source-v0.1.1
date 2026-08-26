@@ -87,7 +87,7 @@ wheel-rotation datarefs.
   the parking stand's available jetways.
 - Default activation radius: 35 m.
 
-Version 0.7 includes an initial default-B738 profile and several common
+Version 0.7.1 includes an initial default-B738 profile and several common
 narrow-body profiles. Aircraft without a profile use a conservative fallback;
 their door position may require later calibration.
 
