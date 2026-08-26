@@ -63,7 +63,6 @@ void Tablet::draw_impl() {
       switch (object->jetway_state) {
         case JetwayState::WheelAligning: state = "WHEEL ALIGNING"; break;
         case JetwayState::HeadPreAligning: state = "HEAD 45 DEG"; break;
-        case JetwayState::HeadAligning: state = "HEAD ALIGNING"; break;
         case JetwayState::Aligning: state = "ALIGNING"; break;
         case JetwayState::Approaching: state = "APPROACHING"; break;
         case JetwayState::Sealing: state = "SEALING"; break;

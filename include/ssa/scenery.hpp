@@ -9,7 +9,7 @@ namespace ssa {
 
 enum class ServiceType { Hangar, Jetway, Vehicle, GroundStaff, ParkingDisplay };
 enum class JetwayState {
-  Parked, WheelAligning, HeadPreAligning, Aligning, Approaching, HeadAligning, Sealing,
+  Parked, WheelAligning, HeadPreAligning, Aligning, Approaching, Sealing,
   Connected, OutOfRange, Parking
 };
 

@@ -1,14 +1,14 @@
 # SSA — Scenery Service Animation
 
 **Developer:** BoldStudio31  
-**Status:** staged jetway docking beta 0.7.2  
+**Status:** staged jetway docking beta 0.7.3  
 **Targets:** X-Plane 11.50+ and X-Plane 12; Windows, Linux and macOS
 
 SSA is a standalone animation controller for scenery objects. It provides custom
 datarefs for hangars, jetways, moving vehicles, ground staff and parking
 displays. It does not depend on SAM or AutoGate.
 
-## Implemented through 0.7.2
+## Implemented through 0.7.3
 
 - Dynamic custom datarefs loaded from each scenery package's `ssa.json`.
 - Smooth open/close animation with configurable speed.
@@ -41,11 +41,11 @@ displays. It does not depend on SAM or AutoGate.
   position for the current rotunda, extension, height and cabin-yaw values.
 - Numerical inverse kinematics finds independent channel targets before motion.
 - SAM-style staged motion: WHEEL ALIGNING, HEAD 45 DEG, ALIGNING,
-  APPROACHING, HEAD ALIGNING, SEALING and CONNECTED.
+  APPROACHING, SEALING and CONNECTED.
 - The bogie steers before bridge motion to prevent a sideways drifting appearance.
-- The cabin head first turns to its safe 45-degree pose. The bridge approaches
-  to a configurable one-metre clearance, aligns the head with the aircraft,
-  then performs the final extension to the contact tolerance.
+- The cabin head turns to 45 degrees and remains there. The bridge approaches
+  to a configurable one-metre clearance, then performs the final extension to
+  the contact tolerance without rotating the head back.
 - Tablet clicks, commands and Automatic mode all use the same safe docking path.
 - Live head-to-door distance is checked every frame; `CONNECTED` is shown only
   within the configured tolerance, otherwise the tablet shows `DOCKING` or

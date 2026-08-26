@@ -57,12 +57,6 @@ void toggle_auto() {
   tablet->set_auto(automatic_ref->value() > 0.5f);
 }
 
-float wrap_degrees(float value) {
-  while (value > 180.0f) value -= 360.0f;
-  while (value < -180.0f) value += 360.0f;
-  return value;
-}
-
 std::string aircraft_icao() {
   char buffer[16]{};
   if (icao_ref) XPLMGetDatab(icao_ref, buffer, 0, sizeof(buffer) - 1);
@@ -114,19 +108,6 @@ Vec3 head_local(const ssa::JetwayKinematics& k, const std::array<float, 4>& rati
   return point;
 }
 
-float cabin_heading_world(const ssa::JetwayKinematics& k,
-                          const std::array<float, 4>& ratios) {
-  Vec3 direction{-1.0f, 0.0f, 0.0f};
-  direction = rotate_y(direction, k.cabin_degrees * ratios[3]);
-  direction = rotate_z(direction, k.height_degrees * ratios[2]);
-  direction = rotate_y(direction, k.rotunda_degrees * ratios[0]);
-  constexpr float radians = 3.14159265358979323846f / 180.0f;
-  const float heading = k.object_heading_deg * radians;
-  const float world_x = std::cos(heading) * direction.x - std::sin(heading) * direction.z;
-  const float world_z = std::sin(heading) * direction.x + std::cos(heading) * direction.z;
-  return std::atan2(world_x, -world_z) / radians;
-}
-
 Vec3 door_local(const ssa::ServiceObject& jetway, float& aircraft_heading) {
   const double aircraft_lat = lat_ref ? XPLMGetDatad(lat_ref) : 0.0;
   const double aircraft_lon = lon_ref ? XPLMGetDatad(lon_ref) : 0.0;
@@ -165,40 +146,32 @@ float position_error(const ssa::JetwayKinematics& k, const Vec3& door,
                    (head.z - door.z) * (head.z - door.z));
 }
 
-float objective(const ssa::JetwayKinematics& k, const Vec3& door,
-                float aircraft_heading, const std::array<float, 4>& ratios) {
-  const float error = position_error(k, door, ratios);
-  const float desired_heading = aircraft_heading + 90.0f;
-  const float heading_error = wrap_degrees(cabin_heading_world(k, ratios) - desired_heading);
-  return error * error + heading_error * heading_error * 0.00001f;
-}
-
-JetwaySolution solve_jetway(const ssa::ServiceObject& jetway, const Vec3& door,
-                            float aircraft_heading) {
+JetwaySolution solve_jetway(const ssa::ServiceObject& jetway, const Vec3& door) {
   JetwaySolution best;
   float best_score = 1.0e30f;
   for (int r = 0; r <= 5; ++r) {
     for (int e = 0; e <= 5; ++e) {
       for (int h = 0; h <= 5; ++h) {
-        for (int c = 0; c <= 5; ++c) {
-          std::array<float, 4> candidate{r / 5.0f, e / 5.0f, h / 5.0f, c / 5.0f};
-          const float score = objective(jetway.kinematics, door, aircraft_heading, candidate);
-          if (score < best_score) {
-            best_score = score;
-            best.ratios = candidate;
-          }
+        std::array<float, 4> candidate{r / 5.0f, e / 5.0f, h / 5.0f,
+                                       jetway.kinematics.cabin_pre_align_ratio};
+        const float error = position_error(jetway.kinematics, door, candidate);
+        const float score = error * error;
+        if (score < best_score) {
+          best_score = score;
+          best.ratios = candidate;
         }
       }
     }
   }
   float step = 0.1f;
   for (int iteration = 0; iteration < 9; ++iteration, step *= 0.5f) {
-    for (size_t axis = 0; axis < best.ratios.size(); ++axis) {
+    for (size_t axis = 0; axis < 3; ++axis) {
       const auto center = best.ratios;
       for (int direction : {-1, 1}) {
         auto candidate = center;
         candidate[axis] = std::clamp(candidate[axis] + direction * step, 0.0f, 1.0f);
-        const float score = objective(jetway.kinematics, door, aircraft_heading, candidate);
+        const float error = position_error(jetway.kinematics, door, candidate);
+        const float score = error * error;
         if (score < best_score) {
           best_score = score;
           best.ratios = candidate;
@@ -240,12 +213,12 @@ bool apply_door_target(ssa::ServiceObject& jetway) {
 
   float aircraft_heading{};
   const Vec3 door = door_local(jetway, aircraft_heading);
-  const JetwaySolution solution = solve_jetway(jetway, door, aircraft_heading);
+  const JetwaySolution solution = solve_jetway(jetway, door);
   jetway.solution_error_m = solution.position_error_m;
   char diagnostic[256];
   std::snprintf(diagnostic, sizeof(diagnostic),
-                "Jetway '%s' door local=(%.2f, %.2f, %.2f), solution=(%.3f, %.3f, %.3f, %.3f), error=%.2f m",
-                jetway.label.c_str(), door.x, door.y, door.z, solution.ratios[0],
+                "Jetway '%s' door local=(%.2f, %.2f, %.2f), aircraft heading=%.1f, solution=(%.3f, %.3f, %.3f, %.3f), error=%.2f m",
+                jetway.label.c_str(), door.x, door.y, door.z, aircraft_heading, solution.ratios[0],
                 solution.ratios[1], solution.ratios[2], solution.ratios[3],
                 solution.position_error_m);
   log(diagnostic);
@@ -311,12 +284,6 @@ void advance_jetway_docking(ssa::ServiceObject& jetway) {
   }
   if (jetway.jetway_state == ssa::JetwayState::Approaching &&
       channel_at_target(jetway, "extension")) {
-    scenery->set_channel_target(jetway, "cabin_yaw", jetway.solution_targets[3]);
-    jetway.jetway_state = ssa::JetwayState::HeadAligning;
-    return;
-  }
-  if (jetway.jetway_state == ssa::JetwayState::HeadAligning &&
-      channel_at_target(jetway, "cabin_yaw")) {
     scenery->set_channel_target(jetway, "extension", jetway.solution_targets[1]);
     scenery->set_channel_target(jetway, "wheel_rotation", jetway.solution_targets[1]);
     jetway.jetway_state = ssa::JetwayState::Sealing;
@@ -550,7 +517,7 @@ PLUGIN_API int XPluginStart(char* name, char* signature, char* description) {
     XPLMAppendMenuItem(menu, "Toggle nearest hangar", reinterpret_cast<void*>(3), 0);
     XPLMAppendMenuItem(menu, "Toggle nearest jetway", reinterpret_cast<void*>(4), 0);
     XPLMRegisterFlightLoopCallback(flight_loop, 0.05f, nullptr);
-    log("SSA 0.7.2 started: " + std::to_string(scenery->objects().size()) +
+    log("SSA 0.7.3 started: " + std::to_string(scenery->objects().size()) +
         " object(s), L1 door dataref " + (door_open_ref ? "detected" : "not found"));
     return 1;
   } catch (const std::exception& e) {
