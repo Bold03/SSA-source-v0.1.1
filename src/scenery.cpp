@@ -101,15 +101,21 @@ bool SceneryManager::load_file(const std::string& path) {
         object.kinematics.door_forward_m = k.value("door_forward_m", 0.0f);
         object.kinematics.door_right_m = k.value("door_right_m", 0.0f);
         object.kinematics.door_sill_height_m = k.value("door_sill_height_m", 2.8f);
-        object.kinematics.parked_heading_deg = k.value("parked_heading_deg", 0.0f);
-        object.kinematics.rotunda_min_deg = k.value("rotunda_min_deg", 0.0f);
-        object.kinematics.rotunda_max_deg = k.value("rotunda_max_deg", 90.0f);
-        object.kinematics.parked_length_m = std::max(0.1f, k.value("parked_length_m", 18.0f));
-        object.kinematics.extension_travel_m = std::max(0.1f, k.value("extension_travel_m", 12.0f));
-        object.kinematics.deck_min_m = k.value("deck_min_m", 2.0f);
-        object.kinematics.deck_max_m = k.value("deck_max_m", 5.5f);
-        object.kinematics.cabin_yaw_min_deg = k.value("cabin_yaw_min_deg", -45.0f);
-        object.kinematics.cabin_yaw_max_deg = k.value("cabin_yaw_max_deg", 45.0f);
+        object.kinematics.object_heading_deg = k.value("object_heading_deg", 0.0f);
+        object.kinematics.root_height_m = k.value("root_height_m", 6.2116299f);
+        object.kinematics.height_pivot_x_m = k.value("height_pivot_x_m", -1.5035599f);
+        object.kinematics.height_pivot_y_m = k.value("height_pivot_y_m", -1.41546f);
+        object.kinematics.height_pivot_z_m = k.value("height_pivot_z_m", 0.05581f);
+        object.kinematics.tunnel_parked_x_m = k.value("tunnel_parked_x_m", -14.7733903f);
+        object.kinematics.extension_x_m = k.value("extension_x_m", -15.6308797f);
+        object.kinematics.head_x_m = k.value("head_x_m", -5.010006f);
+        object.kinematics.head_y_m = k.value("head_y_m", -1.5702132f);
+        object.kinematics.head_z_m = k.value("head_z_m", 0.0f);
+        object.kinematics.rotunda_degrees = k.value("rotunda_degrees", 90.000207f);
+        object.kinematics.height_degrees = k.value("height_degrees", 4.0599788f);
+        object.kinematics.cabin_degrees = k.value("cabin_degrees", 45.000104f);
+        object.kinematics.connect_tolerance_m = std::clamp(k.value("connect_tolerance_m", 0.05f), 0.01f, 0.50f);
+        object.kinematics.max_solution_error_m = std::clamp(k.value("max_solution_error_m", 0.25f), 0.05f, 2.0f);
       }
       const bool duplicate = std::any_of(objects_.begin(), objects_.end(), [&](const auto& existing) {
         return existing.dataref == object.dataref;
@@ -163,6 +169,8 @@ void SceneryManager::update(float elapsed_seconds, bool suppress_ground_services
       object.target = 0.0f;
     }
     if (!object.channels.empty()) {
+      float completion = 0.0f;
+      bool all_parked = true;
       for (auto& channel : object.channels) {
         const float channel_step = std::max(0.0f, channel.speed * elapsed_seconds);
         if (channel.progress < channel.target)
@@ -170,10 +178,16 @@ void SceneryManager::update(float elapsed_seconds, bool suppress_ground_services
         else if (channel.progress > channel.target)
           channel.progress = std::max(channel.target, channel.progress - channel_step);
         if (auto* ref = refs_.find(channel.dataref)) ref->set(channel.progress);
+        all_parked = all_parked && channel.progress <= 0.001f;
+        completion += object.target > 0.5f
+                          ? 1.0f - std::abs(channel.target - channel.progress)
+                          : channel.progress;
       }
-      const float step = std::max(0.0f, object.speed * elapsed_seconds);
-      if (object.progress < object.target) object.progress = std::min(object.target, object.progress + step);
-      else if (object.progress > object.target) object.progress = std::max(object.target, object.progress - step);
+      object.progress = object.target > 0.5f
+                            ? std::clamp(completion / static_cast<float>(object.channels.size()), 0.0f, 1.0f)
+                            : std::clamp(completion / static_cast<float>(object.channels.size()), 0.0f, 1.0f);
+      if (object.type == ServiceType::Jetway && object.target < 0.5f && all_parked)
+        object.jetway_state = JetwayState::Parked;
       if (auto* ref = refs_.find(object.dataref)) ref->set(object.progress);
       continue;
     }
@@ -187,6 +201,10 @@ void SceneryManager::update(float elapsed_seconds, bool suppress_ground_services
 void SceneryManager::set_uniform_target(ServiceObject& object, float target) {
   object.target = std::clamp(target, 0.0f, 1.0f);
   for (auto& channel : object.channels) channel.target = object.target;
+  if (object.type == ServiceType::Jetway && object.target < 0.5f) {
+    object.jetway_state = JetwayState::Parking;
+    object.head_error_m = -1.0f;
+  }
 }
 
 bool SceneryManager::set_channel_target(ServiceObject& object, const std::string& channel_name,

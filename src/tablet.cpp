@@ -53,13 +53,27 @@ void Tablet::draw_impl() {
   int y = t - 165;
   for (size_t i = 0; i < std::min<size_t>(list.size(), 8); ++i, y -= 34) {
     const auto* object = list[i];
-    const char* state = tab_ == 0 ? "CLOSED" : "PARKED";
-    if (object->progress >= 0.999f) state = tab_ == 0 ? "OPEN" : "CONNECTED";
-    else if (object->target > object->progress) state = tab_ == 0 ? "OPENING" : "CONNECTING";
-    else if (object->target < object->progress) state = tab_ == 0 ? "CLOSING" : "DISCONNECTING";
+    const char* state = "CLOSED";
+    if (tab_ == 0) {
+      if (object->progress >= 0.999f) state = "OPEN";
+      else if (object->target > object->progress) state = "OPENING";
+      else if (object->target < object->progress) state = "CLOSING";
+    } else {
+      switch (object->jetway_state) {
+        case JetwayState::Docking: state = "DOCKING"; break;
+        case JetwayState::Connected: state = "CONNECTED"; break;
+        case JetwayState::OutOfRange: state = "OUT OF RANGE"; break;
+        case JetwayState::Parking: state = "PARKING"; break;
+        case JetwayState::Parked: state = "PARKED"; break;
+      }
+    }
     char line[180];
-    std::snprintf(line, sizeof(line), "%zu. %s   %s  %3.0f%%", i + 1,
-                  object->label.c_str(), state, object->progress * 100.0f);
+    if (tab_ == 1 && object->head_error_m >= 0.0f)
+      std::snprintf(line, sizeof(line), "%zu. %s  %s  %.0f cm", i + 1,
+                    object->label.c_str(), state, object->head_error_m * 100.0f);
+    else
+      std::snprintf(line, sizeof(line), "%zu. %s   %s  %3.0f%%", i + 1,
+                    object->label.c_str(), state, object->progress * 100.0f);
     label(l + 26, y, line);
   }
   if (list.empty()) label(l + 26, y, "No SSA object found in range.", 1.0f, 0.65f, 0.35f);

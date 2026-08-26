@@ -7,6 +7,7 @@
 namespace ssa {
 
 enum class ServiceType { Hangar, Jetway, Vehicle, GroundStaff, ParkingDisplay };
+enum class JetwayState { Parked, Docking, Connected, OutOfRange, Parking };
 
 struct AnimationChannel {
   std::string name;
@@ -22,15 +23,21 @@ struct JetwayKinematics {
   float door_forward_m{};
   float door_right_m{};
   float door_sill_height_m{2.8f};
-  float parked_heading_deg{};
-  float rotunda_min_deg{};
-  float rotunda_max_deg{90.0f};
-  float parked_length_m{18.0f};
-  float extension_travel_m{12.0f};
-  float deck_min_m{2.0f};
-  float deck_max_m{5.5f};
-  float cabin_yaw_min_deg{-45.0f};
-  float cabin_yaw_max_deg{45.0f};
+  float object_heading_deg{};
+  float root_height_m{6.2116299f};
+  float height_pivot_x_m{-1.5035599f};
+  float height_pivot_y_m{-1.41546f};
+  float height_pivot_z_m{0.05581f};
+  float tunnel_parked_x_m{-14.7733903f};
+  float extension_x_m{-15.6308797f};
+  float head_x_m{-5.010006f};
+  float head_y_m{-1.5702132f};
+  float head_z_m{};
+  float rotunda_degrees{90.000207f};
+  float height_degrees{4.0599788f};
+  float cabin_degrees{45.000104f};
+  float connect_tolerance_m{0.05f};
+  float max_solution_error_m{0.25f};
 };
 
 struct ServiceObject {
@@ -45,6 +52,9 @@ struct ServiceObject {
   float speed{0.20f};
   float progress{};
   float target{};
+  JetwayState jetway_state{JetwayState::Parked};
+  float head_error_m{-1.0f};
+  float solution_error_m{-1.0f};
   JetwayKinematics kinematics;
   std::vector<AnimationChannel> channels;
 };

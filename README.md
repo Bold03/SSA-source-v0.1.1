@@ -1,14 +1,14 @@
 # SSA — Scenery Service Animation
 
 **Developer:** BoldStudio31  
-**Status:** automatic door-targeting beta 0.5.1  
+**Status:** closed-loop jetway docking beta 0.6.0  
 **Targets:** X-Plane 11.50+ and X-Plane 12; Windows, Linux and macOS
 
 SSA is a standalone animation controller for scenery objects. It provides custom
 datarefs for hangars, jetways, moving vehicles, ground staff and parking
 displays. It does not depend on SAM or AutoGate.
 
-## Implemented through 0.5.0
+## Implemented through 0.6.0
 
 - Dynamic custom datarefs loaded from each scenery package's `ssa.json`.
 - Smooth open/close animation with configurable speed.
@@ -37,6 +37,15 @@ displays. It does not depend on SAM or AutoGate.
 - Automatic mode starts OFF so a new model can be calibrated safely.
 - Per-scenery door-offset overrides allow aircraft targeting to be calibrated
   in `ssa.json` without recompiling the plugin.
+- Forward kinematics extracted from the exported OBJ calculate the cabin-head
+  position for the current rotunda, extension, height and cabin-yaw values.
+- Numerical inverse kinematics finds independent channel targets before motion.
+- Live head-to-door distance is checked every frame; `CONNECTED` is shown only
+  within the configured tolerance, otherwise the tablet shows `DOCKING` or
+  `OUT OF RANGE`.
+- The default B738 L1 door-state dataref is detected at startup; its XYZ target
+  comes from the aircraft profile because X-Plane door datarefs contain state,
+  not world coordinates.
 
 ## Planned before a production release
 
@@ -61,7 +70,7 @@ Open the tablet from **Plugins → SSA → Open tablet**. The command is
 
 ## Important
 
-This is a beta foundation, not yet a finished public plugin. Test it in a copy
+This is a beta, not yet a finished public plugin. Test it in a copy
 of a scenery first. Jetway movement limits must match the transforms authored
 in Blender. Additional aircraft profiles and licensed announcement recordings
 are still required.

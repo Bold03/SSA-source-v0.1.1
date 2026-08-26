@@ -51,22 +51,24 @@ Jetways use separate normalized channels from 0.0 (parked) to 1.0 (connected):
 
 See `examples/ssa.json` for complete channel dataref names and speeds.
 
-The optional `kinematics` block enables door targeting. Its values describe
-the real movement represented by dataref values 0 and 1:
+The optional `kinematics` block enables closed-loop door targeting. Its values
+describe the exact transform hierarchy exported in the OBJ:
 
 - `door_forward_m`: L1 door offset forward from the aircraft reference point.
 - `door_right_m`: lateral door offset; negative values are on the aircraft's left.
 - `door_sill_height_m`: door-sill height above the ground.
-- `parked_heading_deg`: world heading used as the rotunda's zero reference.
-- `rotunda_min_deg` / `rotunda_max_deg`: yaw angles relative to that reference.
-- `parked_length_m`: base-to-cabin distance at `extension_ratio = 0`.
-- `extension_travel_m`: extra reach represented by `extension_ratio = 1`.
-- `deck_min_m` / `deck_max_m`: cabin floor heights represented by 0 and 1.
-- `cabin_yaw_min_deg` / `cabin_yaw_max_deg`: cabin alignment angles represented
-  by 0 and 1.
+- `object_heading_deg`: heading assigned to the OBJ in WED.
+- `root_height_m` and `height_pivot_*_m`: root and pitch-pivot translations.
+- `tunnel_parked_x_m`: combined tunnel/cabin translation at ratio 0.
+- `extension_x_m`: combined extension added at ratio 1.
+- `head_*_m`: contact point on the cabin head in cabin-local coordinates.
+- `rotunda_degrees`, `height_degrees`, `cabin_degrees`: rotation at ratio 1.
+- `connect_tolerance_m`: maximum head-to-door distance for `CONNECTED`.
+- `max_solution_error_m`: reject docking as `OUT OF RANGE` when no valid
+  kinematic solution is closer than this value.
 
-Automatic mode starts OFF. Test manual Connect first and adjust these limits if
-the model stops short, overshoots, or rotates in the opposite direction.
+Automatic mode starts OFF. Test manual Connect first. The tablet displays the
+live head-to-door error in centimetres while docking.
 
 ### Moving car recommendation
 
@@ -85,7 +87,7 @@ wheel-rotation datarefs.
   the parking stand's available jetways.
 - Default activation radius: 35 m.
 
-Version 0.5 includes an initial default-B738 profile and several common
+Version 0.6 includes an initial default-B738 profile and several common
 narrow-body profiles. Aircraft without a profile use a conservative fallback;
 their door position may require later calibration.
 
