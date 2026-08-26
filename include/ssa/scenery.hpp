@@ -18,6 +18,10 @@ struct AnimationChannel {
 
 struct JetwayKinematics {
   bool enabled{};
+  bool door_override{};
+  float door_forward_m{};
+  float door_right_m{};
+  float door_sill_height_m{2.8f};
   float parked_heading_deg{};
   float rotunda_min_deg{};
   float rotunda_max_deg{90.0f};

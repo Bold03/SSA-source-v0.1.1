@@ -91,7 +91,12 @@ bool apply_door_target(ssa::ServiceObject& jetway) {
 
   constexpr double pi = 3.14159265358979323846;
   const double heading_rad = static_cast<double>(aircraft_heading) * pi / 180.0;
-  const DoorProfile door = door_profile(aircraft_icao());
+  DoorProfile door = door_profile(aircraft_icao());
+  if (jetway.kinematics.door_override) {
+    door.forward_m = jetway.kinematics.door_forward_m;
+    door.right_m = jetway.kinematics.door_right_m;
+    door.sill_height_m = jetway.kinematics.door_sill_height_m;
+  }
   const double forward_x = std::sin(heading_rad);
   const double forward_z = -std::cos(heading_rad);
   const double right_x = std::cos(heading_rad);
@@ -301,7 +306,7 @@ PLUGIN_API int XPluginStart(char* name, char* signature, char* description) {
     XPLMAppendMenuItem(menu, "Toggle nearest hangar", reinterpret_cast<void*>(3), 0);
     XPLMAppendMenuItem(menu, "Toggle nearest jetway", reinterpret_cast<void*>(4), 0);
     XPLMRegisterFlightLoopCallback(flight_loop, 0.05f, nullptr);
-    log("SSA 0.5.0 started: " + std::to_string(scenery->objects().size()) + " object(s)");
+    log("SSA 0.5.1 started: " + std::to_string(scenery->objects().size()) + " object(s)");
     return 1;
   } catch (const std::exception& e) {
     log(std::string("Start failed: ") + e.what());

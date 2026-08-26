@@ -54,6 +54,9 @@ See `examples/ssa.json` for complete channel dataref names and speeds.
 The optional `kinematics` block enables door targeting. Its values describe
 the real movement represented by dataref values 0 and 1:
 
+- `door_forward_m`: L1 door offset forward from the aircraft reference point.
+- `door_right_m`: lateral door offset; negative values are on the aircraft's left.
+- `door_sill_height_m`: door-sill height above the ground.
 - `parked_heading_deg`: world heading used as the rotunda's zero reference.
 - `rotunda_min_deg` / `rotunda_max_deg`: yaw angles relative to that reference.
 - `parked_length_m`: base-to-cabin distance at `extension_ratio = 0`.

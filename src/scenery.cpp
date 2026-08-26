@@ -95,6 +95,12 @@ bool SceneryManager::load_file(const std::string& path) {
       if (object.type == ServiceType::Jetway && item.contains("kinematics")) {
         const auto& k = item.at("kinematics");
         object.kinematics.enabled = true;
+        object.kinematics.door_override = k.contains("door_forward_m") ||
+                                          k.contains("door_right_m") ||
+                                          k.contains("door_sill_height_m");
+        object.kinematics.door_forward_m = k.value("door_forward_m", 0.0f);
+        object.kinematics.door_right_m = k.value("door_right_m", 0.0f);
+        object.kinematics.door_sill_height_m = k.value("door_sill_height_m", 2.8f);
         object.kinematics.parked_heading_deg = k.value("parked_heading_deg", 0.0f);
         object.kinematics.rotunda_min_deg = k.value("rotunda_min_deg", 0.0f);
         object.kinematics.rotunda_max_deg = k.value("rotunda_max_deg", 90.0f);

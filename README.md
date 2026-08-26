@@ -1,7 +1,7 @@
 # SSA — Scenery Service Animation
 
 **Developer:** BoldStudio31  
-**Status:** automatic door-targeting beta 0.5.0  
+**Status:** automatic door-targeting beta 0.5.1  
 **Targets:** X-Plane 11.50+ and X-Plane 12; Windows, Linux and macOS
 
 SSA is a standalone animation controller for scenery objects. It provides custom
@@ -35,6 +35,8 @@ displays. It does not depend on SAM or AutoGate.
   recognized wide-bodies may receive two nearby jetways.
 - Corrected the Jetway tab mouse hitbox.
 - Automatic mode starts OFF so a new model can be calibrated safely.
+- Per-scenery door-offset overrides allow aircraft targeting to be calibrated
+  in `ssa.json` without recompiling the plugin.
 
 ## Planned before a production release
 

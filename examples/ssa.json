@@ -22,6 +22,9 @@
       "speed": 0.12,
       "dataref": "boldstudio31/ssa/animation/example_wihh/jetway_01/state",
       "kinematics": {
+        "door_forward_m": 12.6,
+        "door_right_m": -1.85,
+        "door_sill_height_m": 2.75,
         "parked_heading_deg": 90.0,
         "rotunda_min_deg": -45.0,
         "rotunda_max_deg": 45.0,
