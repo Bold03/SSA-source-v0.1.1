@@ -114,6 +114,10 @@ bool SceneryManager::load_file(const std::string& path) {
         object.kinematics.rotunda_degrees = k.value("rotunda_degrees", 90.000207f);
         object.kinematics.height_degrees = k.value("height_degrees", 4.0599788f);
         object.kinematics.cabin_degrees = k.value("cabin_degrees", 45.000104f);
+        object.kinematics.cabin_pre_align_ratio =
+            std::clamp(k.value("cabin_pre_align_ratio", 1.0f), 0.0f, 1.0f);
+        object.kinematics.pre_dock_clearance_m =
+            std::clamp(k.value("pre_dock_clearance_m", 1.0f), 0.25f, 3.0f);
         object.kinematics.connect_tolerance_m = std::clamp(k.value("connect_tolerance_m", 0.05f), 0.01f, 0.50f);
         object.kinematics.max_solution_error_m = std::clamp(k.value("max_solution_error_m", 0.25f), 0.05f, 2.0f);
       }

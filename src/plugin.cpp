@@ -286,6 +286,13 @@ void advance_jetway_docking(ssa::ServiceObject& jetway) {
 
   if (jetway.jetway_state == ssa::JetwayState::WheelAligning &&
       channel_at_target(jetway, "wheel_steer")) {
+    scenery->set_channel_target(jetway, "cabin_yaw",
+                                jetway.kinematics.cabin_pre_align_ratio);
+    jetway.jetway_state = ssa::JetwayState::HeadPreAligning;
+    return;
+  }
+  if (jetway.jetway_state == ssa::JetwayState::HeadPreAligning &&
+      channel_at_target(jetway, "cabin_yaw")) {
     scenery->set_channel_target(jetway, "rotunda", jetway.solution_targets[0]);
     scenery->set_channel_target(jetway, "height", jetway.solution_targets[2]);
     jetway.jetway_state = ssa::JetwayState::Aligning;
@@ -293,14 +300,25 @@ void advance_jetway_docking(ssa::ServiceObject& jetway) {
   }
   if (jetway.jetway_state == ssa::JetwayState::Aligning &&
       channel_at_target(jetway, "rotunda") && channel_at_target(jetway, "height")) {
-    scenery->set_channel_target(jetway, "extension", jetway.solution_targets[1]);
-    scenery->set_channel_target(jetway, "wheel_rotation", jetway.solution_targets[1]);
+    const float clearance_ratio = jetway.kinematics.pre_dock_clearance_m /
+                                  std::max(0.1f, std::abs(jetway.kinematics.extension_x_m));
+    const float pre_dock_extension =
+        std::max(0.0f, jetway.solution_targets[1] - clearance_ratio);
+    scenery->set_channel_target(jetway, "extension", pre_dock_extension);
+    scenery->set_channel_target(jetway, "wheel_rotation", pre_dock_extension);
     jetway.jetway_state = ssa::JetwayState::Approaching;
     return;
   }
   if (jetway.jetway_state == ssa::JetwayState::Approaching &&
       channel_at_target(jetway, "extension")) {
     scenery->set_channel_target(jetway, "cabin_yaw", jetway.solution_targets[3]);
+    jetway.jetway_state = ssa::JetwayState::HeadAligning;
+    return;
+  }
+  if (jetway.jetway_state == ssa::JetwayState::HeadAligning &&
+      channel_at_target(jetway, "cabin_yaw")) {
+    scenery->set_channel_target(jetway, "extension", jetway.solution_targets[1]);
+    scenery->set_channel_target(jetway, "wheel_rotation", jetway.solution_targets[1]);
     jetway.jetway_state = ssa::JetwayState::Sealing;
     return;
   }
@@ -532,7 +550,7 @@ PLUGIN_API int XPluginStart(char* name, char* signature, char* description) {
     XPLMAppendMenuItem(menu, "Toggle nearest hangar", reinterpret_cast<void*>(3), 0);
     XPLMAppendMenuItem(menu, "Toggle nearest jetway", reinterpret_cast<void*>(4), 0);
     XPLMRegisterFlightLoopCallback(flight_loop, 0.05f, nullptr);
-    log("SSA 0.7.1 started: " + std::to_string(scenery->objects().size()) +
+    log("SSA 0.7.2 started: " + std::to_string(scenery->objects().size()) +
         " object(s), L1 door dataref " + (door_open_ref ? "detected" : "not found"));
     return 1;
   } catch (const std::exception& e) {

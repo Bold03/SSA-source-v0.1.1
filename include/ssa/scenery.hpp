@@ -9,7 +9,8 @@ namespace ssa {
 
 enum class ServiceType { Hangar, Jetway, Vehicle, GroundStaff, ParkingDisplay };
 enum class JetwayState {
-  Parked, WheelAligning, Aligning, Approaching, Sealing, Connected, OutOfRange, Parking
+  Parked, WheelAligning, HeadPreAligning, Aligning, Approaching, HeadAligning, Sealing,
+  Connected, OutOfRange, Parking
 };
 
 struct AnimationChannel {
@@ -39,6 +40,8 @@ struct JetwayKinematics {
   float rotunda_degrees{90.000207f};
   float height_degrees{4.0599788f};
   float cabin_degrees{45.000104f};
+  float cabin_pre_align_ratio{1.0f};
+  float pre_dock_clearance_m{1.0f};
   float connect_tolerance_m{0.05f};
   float max_solution_error_m{0.25f};
 };

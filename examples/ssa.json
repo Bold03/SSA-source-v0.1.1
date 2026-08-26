@@ -38,6 +38,8 @@
         "rotunda_degrees": 90.000207,
         "height_degrees": 4.0599788,
         "cabin_degrees": 45.000104,
+        "cabin_pre_align_ratio": 1.0,
+        "pre_dock_clearance_m": 1.0,
         "connect_tolerance_m": 0.05,
         "max_solution_error_m": 0.05
       },
