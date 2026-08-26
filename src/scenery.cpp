@@ -92,6 +92,19 @@ bool SceneryManager::load_file(const std::string& path) {
       object.radius_m = item.value("radius_m", object.type == ServiceType::Hangar ? 2000.0f : 35.0f);
       object.speed = std::clamp(item.value("speed", 0.20f), 0.01f, 2.0f);
       object.dataref = item.value("dataref", "boldstudio31/ssa/" + airport + "/" + object.id);
+      if (object.type == ServiceType::Jetway && item.contains("kinematics")) {
+        const auto& k = item.at("kinematics");
+        object.kinematics.enabled = true;
+        object.kinematics.parked_heading_deg = k.value("parked_heading_deg", 0.0f);
+        object.kinematics.rotunda_min_deg = k.value("rotunda_min_deg", 0.0f);
+        object.kinematics.rotunda_max_deg = k.value("rotunda_max_deg", 90.0f);
+        object.kinematics.parked_length_m = std::max(0.1f, k.value("parked_length_m", 18.0f));
+        object.kinematics.extension_travel_m = std::max(0.1f, k.value("extension_travel_m", 12.0f));
+        object.kinematics.deck_min_m = k.value("deck_min_m", 2.0f);
+        object.kinematics.deck_max_m = k.value("deck_max_m", 5.5f);
+        object.kinematics.cabin_yaw_min_deg = k.value("cabin_yaw_min_deg", -45.0f);
+        object.kinematics.cabin_yaw_max_deg = k.value("cabin_yaw_max_deg", 45.0f);
+      }
       const bool duplicate = std::any_of(objects_.begin(), objects_.end(), [&](const auto& existing) {
         return existing.dataref == object.dataref;
       });
@@ -144,18 +157,17 @@ void SceneryManager::update(float elapsed_seconds, bool suppress_ground_services
       object.target = 0.0f;
     }
     if (!object.channels.empty()) {
-      float total = 0.0f;
       for (auto& channel : object.channels) {
-        channel.target = object.target;
         const float channel_step = std::max(0.0f, channel.speed * elapsed_seconds);
         if (channel.progress < channel.target)
           channel.progress = std::min(channel.target, channel.progress + channel_step);
         else if (channel.progress > channel.target)
           channel.progress = std::max(channel.target, channel.progress - channel_step);
         if (auto* ref = refs_.find(channel.dataref)) ref->set(channel.progress);
-        total += channel.progress;
       }
-      object.progress = total / static_cast<float>(object.channels.size());
+      const float step = std::max(0.0f, object.speed * elapsed_seconds);
+      if (object.progress < object.target) object.progress = std::min(object.target, object.progress + step);
+      else if (object.progress > object.target) object.progress = std::max(object.target, object.progress - step);
       if (auto* ref = refs_.find(object.dataref)) ref->set(object.progress);
       continue;
     }
@@ -164,6 +176,20 @@ void SceneryManager::update(float elapsed_seconds, bool suppress_ground_services
     else if (object.progress > object.target) object.progress = std::max(object.target, object.progress - step);
     if (auto* ref = refs_.find(object.dataref)) ref->set(object.progress);
   }
+}
+
+void SceneryManager::set_uniform_target(ServiceObject& object, float target) {
+  object.target = std::clamp(target, 0.0f, 1.0f);
+  for (auto& channel : object.channels) channel.target = object.target;
+}
+
+bool SceneryManager::set_channel_target(ServiceObject& object, const std::string& channel_name,
+                                        float target) {
+  const auto found = std::find_if(object.channels.begin(), object.channels.end(),
+                                  [&](const auto& channel) { return channel.name == channel_name; });
+  if (found == object.channels.end()) return false;
+  found->target = std::clamp(target, 0.0f, 1.0f);
+  return true;
 }
 
 std::vector<ServiceObject*> SceneryManager::nearby(ServiceType type, double lat, double lon, double radius_m) {

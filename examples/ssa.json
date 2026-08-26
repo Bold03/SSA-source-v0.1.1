@@ -21,6 +21,17 @@
       "radius_m": 35,
       "speed": 0.12,
       "dataref": "boldstudio31/ssa/animation/example_wihh/jetway_01/state",
+      "kinematics": {
+        "parked_heading_deg": 90.0,
+        "rotunda_min_deg": -45.0,
+        "rotunda_max_deg": 45.0,
+        "parked_length_m": 18.0,
+        "extension_travel_m": 12.0,
+        "deck_min_m": 2.0,
+        "deck_max_m": 5.5,
+        "cabin_yaw_min_deg": -45.0,
+        "cabin_yaw_max_deg": 45.0
+      },
       "channels": {
         "rotunda": {
           "dataref": "boldstudio31/ssa/animation/example_wihh/jetway_01/rotunda_ratio",
@@ -37,6 +48,10 @@
         "cabin_yaw": {
           "dataref": "boldstudio31/ssa/animation/example_wihh/jetway_01/cabin_yaw_ratio",
           "speed": 0.12
+        },
+        "wheel_steer": {
+          "dataref": "boldstudio31/ssa/animation/example_wihh/jetway_01/wheel_steer_ratio",
+          "speed": 0.18
         },
         "wheel_rotation": {
           "dataref": "boldstudio31/ssa/animation/example_wihh/jetway_01/wheel_rotation_ratio",

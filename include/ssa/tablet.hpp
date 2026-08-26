@@ -28,7 +28,7 @@ private:
   std::function<void()> reload_config_;
   double latitude_{};
   double longitude_{};
-  bool automatic_{true};
+  bool automatic_{};
   bool realops_detected_{};
   int tab_{};
 };

@@ -46,9 +46,24 @@ Jetways use separate normalized channels from 0.0 (parked) to 1.0 (connected):
 - `extension_ratio`: tunnel extension.
 - `height_ratio`: tunnel/cabin height.
 - `cabin_yaw_ratio`: cabin alignment.
+- `wheel_steer_ratio`: horizontal bogie steering.
 - `wheel_rotation_ratio`: visible bogie wheel movement.
 
 See `examples/ssa.json` for complete channel dataref names and speeds.
+
+The optional `kinematics` block enables door targeting. Its values describe
+the real movement represented by dataref values 0 and 1:
+
+- `parked_heading_deg`: world heading used as the rotunda's zero reference.
+- `rotunda_min_deg` / `rotunda_max_deg`: yaw angles relative to that reference.
+- `parked_length_m`: base-to-cabin distance at `extension_ratio = 0`.
+- `extension_travel_m`: extra reach represented by `extension_ratio = 1`.
+- `deck_min_m` / `deck_max_m`: cabin floor heights represented by 0 and 1.
+- `cabin_yaw_min_deg` / `cabin_yaw_max_deg`: cabin alignment angles represented
+  by 0 and 1.
+
+Automatic mode starts OFF. Test manual Connect first and adjust these limits if
+the model stops short, overshoots, or rotates in the opposite direction.
 
 ### Moving car recommendation
 
@@ -67,8 +82,9 @@ wheel-rotation datarefs.
   the parking stand's available jetways.
 - Default activation radius: 35 m.
 
-Accurate docking requires an aircraft profile containing ICAO type and door
-coordinates. Aircraft without a profile will use a safe one-jetway fallback.
+Version 0.5 includes an initial default-B738 profile and several common
+narrow-body profiles. Aircraft without a profile use a conservative fallback;
+their door position may require later calibration.
 
 ## SAM and AutoGate
 

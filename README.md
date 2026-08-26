@@ -1,21 +1,23 @@
 # SSA — Scenery Service Animation
 
 **Developer:** BoldStudio31  
-**Status:** jetway foundation 0.4.0  
+**Status:** automatic door-targeting beta 0.5.0  
 **Targets:** X-Plane 11.50+ and X-Plane 12; Windows, Linux and macOS
 
 SSA is a standalone animation controller for scenery objects. It provides custom
 datarefs for hangars, jetways, moving vehicles, ground staff and parking
 displays. It does not depend on SAM or AutoGate.
 
-## Implemented in 0.4.0
+## Implemented through 0.5.0
 
 - Dynamic custom datarefs loaded from each scenery package's `ssa.json`.
 - Smooth open/close animation with configurable speed.
 - Tablet-style native X-Plane window with Hangar and Jetway tabs.
 - Nearby hangar list (2 km) and small jetway activation radius (35 m).
-- First automatic jetway safety rule: turboprops are rejected; other aircraft
-  receive one front jetway.
+- Per-channel automatic jetway targets calculated from aircraft position,
+  heading, door profile and scenery-configured movement limits.
+- Initial forward-left-door profiles for the default B738 plus B737/B739 and
+  A319/A320/A321; unknown aircraft receive a conservative generic profile.
 - GitHub Actions builds for Windows, Linux and universal macOS.
 - Windows `NOMINMAX` protection so MSVC does not replace `std::min/std::max`.
 - Automatic RealOps detection through its plugin signature and visible tablet status.
@@ -26,15 +28,17 @@ displays. It does not depend on SAM or AutoGate.
 - Open, close and toggle commands for the nearest hangar within 2 km.
 - Animation position and target survive configuration reloads.
 - Duplicate datarefs and unsupported object types are rejected safely.
-- Five independent normalized jetway animation channels.
+- Six independent normalized jetway animation channels, including bogie steering.
 - Manual connect, disconnect and toggle commands for the nearest jetway.
 - Automatic jetway only operates while the aircraft is on the ground and nearly stopped.
 - Common turboprops are rejected; narrow-body aircraft receive one jetway and
   recognized wide-bodies may receive two nearby jetways.
+- Corrected the Jetway tab mouse hitbox.
+- Automatic mode starts OFF so a new model can be calibrated safely.
 
 ## Planned before a production release
 
-- Aircraft profile database and accurate forward-door geometry.
+- Expanded, aircraft-specific door profile database and per-aircraft overrides.
 - Wide-body multi-jetway assignment and collision/occupancy checks.
 - SimBrief Pilot ID login, OFP state machine and departure/arrival triggers.
 - Cross-platform positional announcement audio with distance attenuation.
@@ -55,6 +59,7 @@ Open the tablet from **Plugins → SSA → Open tablet**. The command is
 
 ## Important
 
-This is a source foundation, not yet a finished public plugin. Test it in a copy
-of a scenery first. The model assets, airport coordinates, aircraft door
-profiles and licensed announcement recordings are still required.
+This is a beta foundation, not yet a finished public plugin. Test it in a copy
+of a scenery first. Jetway movement limits must match the transforms authored
+in Blender. Additional aircraft profiles and licensed announcement recordings
+are still required.

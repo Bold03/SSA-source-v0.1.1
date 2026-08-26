@@ -80,7 +80,7 @@ int Tablet::mouse_impl(int x, int y, XPLMMouseStatus status) {
     reload_config_();
     return 1;
   }
-  if (y < t - 45 && y > t - 85) { tab_ = x < l + 155 ? 0 : 1; return 1; }
+  if (y < t - 45 && y > t - 85) { tab_ = x < l + 100 ? 0 : 1; return 1; }
   if (tab_ == 1 && y < t - 85 && y > t - 145) { toggle_auto_(); return 1; }
   const int index = (t - 145 - y) / 34;
   auto list = scenery_.nearby(tab_ == 0 ? ServiceType::Hangar : ServiceType::Jetway,
