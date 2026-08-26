@@ -72,9 +72,9 @@ std::string aircraft_icao() {
 DoorProfile door_profile(const std::string& icao) {
   // Offsets are measured from the aircraft reference point: forward, right,
   // and passenger-door sill height above the ground. B738 is calibrated first.
-  // The default B738 pilot eye is 8.6 m forward of the aircraft reference;
-  // L1 is approximately 1.5 m aft of that point.
-  if (icao == "B738") return {7.1f, -1.85f, 2.75f};
+  // SAM-style aircraft profiles store L1 separately from the door-state
+  // dataref because X-Plane does not publish a universal door XYZ dataref.
+  if (icao == "B738") return {12.8f, -1.85f, 2.75f};
   if (icao == "B737") return {11.5f, -1.85f, 2.70f};
   if (icao == "B739") return {13.4f, -1.85f, 2.75f};
   if (icao == "A319") return {11.2f, -1.95f, 2.85f};
@@ -242,6 +242,13 @@ bool apply_door_target(ssa::ServiceObject& jetway) {
   const Vec3 door = door_local(jetway, aircraft_heading);
   const JetwaySolution solution = solve_jetway(jetway, door, aircraft_heading);
   jetway.solution_error_m = solution.position_error_m;
+  char diagnostic[256];
+  std::snprintf(diagnostic, sizeof(diagnostic),
+                "Jetway '%s' door local=(%.2f, %.2f, %.2f), solution=(%.3f, %.3f, %.3f, %.3f), error=%.2f m",
+                jetway.label.c_str(), door.x, door.y, door.z, solution.ratios[0],
+                solution.ratios[1], solution.ratios[2], solution.ratios[3],
+                solution.position_error_m);
+  log(diagnostic);
   if (solution.position_error_m > jetway.kinematics.max_solution_error_m) {
     scenery->set_uniform_target(jetway, 0.0f);
     jetway.jetway_state = ssa::JetwayState::OutOfRange;
@@ -249,27 +256,59 @@ bool apply_door_target(ssa::ServiceObject& jetway) {
     return false;
   }
   jetway.target = 1.0f;
-  jetway.jetway_state = ssa::JetwayState::Docking;
+  jetway.solution_targets = solution.ratios;
+  jetway.solution_ready = true;
+  jetway.jetway_state = ssa::JetwayState::Aligning;
+  // SAM-like sequence: first point the bridge and set its height while the
+  // telescopic tunnel remains parked. Extension starts only after alignment.
   scenery->set_channel_target(jetway, "rotunda", solution.ratios[0]);
-  scenery->set_channel_target(jetway, "extension", solution.ratios[1]);
+  scenery->set_channel_target(jetway, "extension", 0.0f);
   scenery->set_channel_target(jetway, "height", solution.ratios[2]);
-  scenery->set_channel_target(jetway, "cabin_yaw", solution.ratios[3]);
+  scenery->set_channel_target(jetway, "cabin_yaw", 0.0f);
   scenery->set_channel_target(jetway, "wheel_steer", solution.ratios[0]);
-  scenery->set_channel_target(jetway, "wheel_rotation", solution.ratios[1]);
+  scenery->set_channel_target(jetway, "wheel_rotation", 0.0f);
   return true;
 }
 
-void evaluate_jetway_head(ssa::ServiceObject& jetway) {
-  if (!jetway.kinematics.enabled || jetway.target < 0.5f ||
+bool channel_at_target(const ssa::ServiceObject& object, const char* name) {
+  const auto found = std::find_if(object.channels.begin(), object.channels.end(),
+                                  [&](const auto& channel) { return channel.name == name; });
+  return found != object.channels.end() && std::abs(found->progress - found->target) <= 0.001f;
+}
+
+void advance_jetway_docking(ssa::ServiceObject& jetway) {
+  if (!jetway.kinematics.enabled || !jetway.solution_ready || jetway.target < 0.5f ||
       jetway.jetway_state == ssa::JetwayState::OutOfRange) return;
   float aircraft_heading{};
   const Vec3 door = door_local(jetway, aircraft_heading);
   const auto ratios = current_ratios(jetway);
   jetway.head_error_m = position_error(jetway.kinematics, door, ratios);
+
+  if (jetway.jetway_state == ssa::JetwayState::Aligning &&
+      channel_at_target(jetway, "rotunda") && channel_at_target(jetway, "height")) {
+    scenery->set_channel_target(jetway, "extension", jetway.solution_targets[1]);
+    scenery->set_channel_target(jetway, "wheel_rotation", jetway.solution_targets[1]);
+    jetway.jetway_state = ssa::JetwayState::Approaching;
+    return;
+  }
+  if (jetway.jetway_state == ssa::JetwayState::Approaching &&
+      channel_at_target(jetway, "extension")) {
+    scenery->set_channel_target(jetway, "cabin_yaw", jetway.solution_targets[3]);
+    jetway.jetway_state = ssa::JetwayState::Sealing;
+    return;
+  }
+  if (jetway.jetway_state != ssa::JetwayState::Sealing &&
+      jetway.jetway_state != ssa::JetwayState::Connected) return;
+
   if (jetway.head_error_m <= jetway.kinematics.connect_tolerance_m) {
     for (auto& channel : jetway.channels) channel.target = channel.progress;
     jetway.jetway_state = ssa::JetwayState::Connected;
     jetway.progress = 1.0f;
+  } else if (jetway.jetway_state == ssa::JetwayState::Connected &&
+             jetway.head_error_m > 0.30f) {
+    // If the aircraft moves after docking, retract instead of stretching the
+    // scenery object through the fuselage.
+    scenery->set_uniform_target(jetway, 0.0f);
   } else if (docking_channels_at_target(jetway)) {
     // The requested pose has been reached, but the cabin head is still too far
     // from the door. Never report a false CONNECTED state.
@@ -287,6 +326,10 @@ void reload_scenery() {
   char root[2048]{};
   XPLMGetSystemPath(root);
   const bool loaded = scenery->load(root);
+  // A reloaded jetway must be planned again from a known parked state; old
+  // channel targets belong to the previous configuration geometry.
+  for (auto& object : scenery->objects())
+    if (object.type == ssa::ServiceType::Jetway) scenery->set_uniform_target(object, 0.0f);
   log("Configuration reloaded: " + std::to_string(scenery->objects().size()) +
       " object(s)" + (loaded ? "" : " (none found)"));
 }
@@ -331,8 +374,20 @@ bool control_nearest_jetway(int action) {
   }
   log("Nearest jetway '" + jetway->label + "' target: " +
       (jetway->jetway_state == ssa::JetwayState::OutOfRange ? "OUT OF RANGE" :
-       jetway->target > 0.5f ? "DOCKING" : "PARKED"));
+       jetway->target > 0.5f ? "ALIGNING" : "PARKED"));
   return true;
+}
+
+void toggle_tablet_object(ssa::ServiceObject& object) {
+  if (!scenery) return;
+  if (object.type != ssa::ServiceType::Jetway) {
+    object.target = object.target > 0.5f ? 0.0f : 1.0f;
+    return;
+  }
+  if (object.target > 0.5f)
+    scenery->set_uniform_target(object, 0.0f);
+  else
+    apply_door_target(object);
 }
 
 int hangar_handler(XPLMCommandRef, XPLMCommandPhase phase, void* refcon) {
@@ -400,17 +455,25 @@ float flight_loop(float elapsed, float, int, void*) {
     const bool parked = (!onground_ref || XPLMGetDatai(onground_ref) != 0) &&
                         (!groundspeed_ref || std::abs(XPLMGetDataf(groundspeed_ref)) < 0.5f);
     auto nearby = scenery->nearby(ssa::ServiceType::Jetway, lat, lon, 35.0);
-    for (auto& object : scenery->objects())
-      if (object.type == ssa::ServiceType::Jetway) scenery->set_uniform_target(object, 0.0f);
-    if (parked && !turboprop) {
-      const size_t connect_count = is_widebody(icao) ? std::min<size_t>(2, nearby.size())
-                                                     : std::min<size_t>(1, nearby.size());
-      for (size_t i = 0; i < connect_count; ++i) apply_door_target(*nearby[i]);
+    const size_t connect_count = parked && !turboprop
+                                     ? (is_widebody(icao) ? std::min<size_t>(2, nearby.size())
+                                                          : std::min<size_t>(1, nearby.size()))
+                                     : 0;
+    for (auto& object : scenery->objects()) {
+      if (object.type != ssa::ServiceType::Jetway) continue;
+      const bool selected = std::find(nearby.begin(), nearby.begin() + connect_count, &object) !=
+                            nearby.begin() + connect_count;
+      if (selected) {
+        if (object.jetway_state == ssa::JetwayState::Parked && object.target < 0.5f)
+          apply_door_target(object);
+      } else if (object.target > 0.5f) {
+        scenery->set_uniform_target(object, 0.0f);
+      }
     }
   }
   scenery->update(elapsed, realops_detected);
   for (auto& object : scenery->objects())
-    if (object.type == ssa::ServiceType::Jetway) evaluate_jetway_head(object);
+    if (object.type == ssa::ServiceType::Jetway) advance_jetway_docking(object);
   return 0.05f;
 }
 } // namespace
@@ -427,7 +490,8 @@ PLUGIN_API int XPluginStart(char* name, char* signature, char* description) {
     char root[2048]{};
     XPLMGetSystemPath(root);
     scenery->load(root);
-    tablet = std::make_unique<ssa::Tablet>(*scenery, toggle_auto, reload_scenery);
+    tablet = std::make_unique<ssa::Tablet>(*scenery, toggle_auto, reload_scenery,
+                                           toggle_tablet_object);
 
     lat_ref = XPLMFindDataRef("sim/flightmodel/position/latitude");
     lon_ref = XPLMFindDataRef("sim/flightmodel/position/longitude");
@@ -461,7 +525,7 @@ PLUGIN_API int XPluginStart(char* name, char* signature, char* description) {
     XPLMAppendMenuItem(menu, "Toggle nearest hangar", reinterpret_cast<void*>(3), 0);
     XPLMAppendMenuItem(menu, "Toggle nearest jetway", reinterpret_cast<void*>(4), 0);
     XPLMRegisterFlightLoopCallback(flight_loop, 0.05f, nullptr);
-    log("SSA 0.6.0 started: " + std::to_string(scenery->objects().size()) +
+    log("SSA 0.7.0 started: " + std::to_string(scenery->objects().size()) +
         " object(s), L1 door dataref " + (door_open_ref ? "detected" : "not found"));
     return 1;
   } catch (const std::exception& e) {

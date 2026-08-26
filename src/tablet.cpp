@@ -12,9 +12,10 @@ void label(int x, int y, const char* text, float r = 0.90f, float g = 0.95f, flo
 }
 
 Tablet::Tablet(SceneryManager& scenery, std::function<void()> toggle_auto,
-               std::function<void()> reload_config)
+               std::function<void()> reload_config,
+               std::function<void(ServiceObject&)> toggle_object)
     : scenery_(scenery), toggle_auto_(std::move(toggle_auto)),
-      reload_config_(std::move(reload_config)) {
+      reload_config_(std::move(reload_config)), toggle_object_(std::move(toggle_object)) {
   XPLMCreateWindow_t params{};
   params.structSize = sizeof(params);
   params.left = 100; params.top = 700; params.right = 470; params.bottom = 220;
@@ -60,7 +61,9 @@ void Tablet::draw_impl() {
       else if (object->target < object->progress) state = "CLOSING";
     } else {
       switch (object->jetway_state) {
-        case JetwayState::Docking: state = "DOCKING"; break;
+        case JetwayState::Aligning: state = "ALIGNING"; break;
+        case JetwayState::Approaching: state = "APPROACHING"; break;
+        case JetwayState::Sealing: state = "SEALING"; break;
         case JetwayState::Connected: state = "CONNECTED"; break;
         case JetwayState::OutOfRange: state = "OUT OF RANGE"; break;
         case JetwayState::Parking: state = "PARKING"; break;
@@ -99,8 +102,7 @@ int Tablet::mouse_impl(int x, int y, XPLMMouseStatus status) {
   const int index = (t - 145 - y) / 34;
   auto list = scenery_.nearby(tab_ == 0 ? ServiceType::Hangar : ServiceType::Jetway,
                               latitude_, longitude_, tab_ == 0 ? 2000.0 : 35.0);
-  if (index >= 0 && static_cast<size_t>(index) < list.size())
-    list[index]->target = list[index]->target > 0.5f ? 0.0f : 1.0f;
+  if (index >= 0 && static_cast<size_t>(index) < list.size()) toggle_object_(*list[index]);
   return 1;
 }
 

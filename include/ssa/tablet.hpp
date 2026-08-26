@@ -9,7 +9,8 @@ namespace ssa {
 class Tablet {
 public:
   Tablet(SceneryManager& scenery, std::function<void()> toggle_auto,
-         std::function<void()> reload_config);
+         std::function<void()> reload_config,
+         std::function<void(ServiceObject&)> toggle_object);
   ~Tablet();
   void toggle();
   bool visible() const;
@@ -26,6 +27,7 @@ private:
   SceneryManager& scenery_;
   std::function<void()> toggle_auto_;
   std::function<void()> reload_config_;
+  std::function<void(ServiceObject&)> toggle_object_;
   double latitude_{};
   double longitude_{};
   bool automatic_{};

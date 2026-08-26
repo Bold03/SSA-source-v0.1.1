@@ -106,8 +106,8 @@ bool SceneryManager::load_file(const std::string& path) {
         object.kinematics.height_pivot_x_m = k.value("height_pivot_x_m", -1.5035599f);
         object.kinematics.height_pivot_y_m = k.value("height_pivot_y_m", -1.41546f);
         object.kinematics.height_pivot_z_m = k.value("height_pivot_z_m", 0.05581f);
-        object.kinematics.tunnel_parked_x_m = k.value("tunnel_parked_x_m", -14.7733903f);
-        object.kinematics.extension_x_m = k.value("extension_x_m", -15.6308797f);
+        object.kinematics.tunnel_parked_x_m = k.value("tunnel_parked_x_m", -14.0849003f);
+        object.kinematics.extension_x_m = k.value("extension_x_m", -10.7840999f);
         object.kinematics.head_x_m = k.value("head_x_m", -5.010006f);
         object.kinematics.head_y_m = k.value("head_y_m", -1.5702132f);
         object.kinematics.head_z_m = k.value("head_z_m", 0.0f);
@@ -204,6 +204,7 @@ void SceneryManager::set_uniform_target(ServiceObject& object, float target) {
   if (object.type == ServiceType::Jetway && object.target < 0.5f) {
     object.jetway_state = JetwayState::Parking;
     object.head_error_m = -1.0f;
+    object.solution_ready = false;
   }
 }
 

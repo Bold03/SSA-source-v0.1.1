@@ -1,13 +1,14 @@
 #pragma once
 
 #include "ssa/datarefs.hpp"
+#include <array>
 #include <string>
 #include <vector>
 
 namespace ssa {
 
 enum class ServiceType { Hangar, Jetway, Vehicle, GroundStaff, ParkingDisplay };
-enum class JetwayState { Parked, Docking, Connected, OutOfRange, Parking };
+enum class JetwayState { Parked, Aligning, Approaching, Sealing, Connected, OutOfRange, Parking };
 
 struct AnimationChannel {
   std::string name;
@@ -28,8 +29,8 @@ struct JetwayKinematics {
   float height_pivot_x_m{-1.5035599f};
   float height_pivot_y_m{-1.41546f};
   float height_pivot_z_m{0.05581f};
-  float tunnel_parked_x_m{-14.7733903f};
-  float extension_x_m{-15.6308797f};
+  float tunnel_parked_x_m{-14.0849003f};
+  float extension_x_m{-10.7840999f};
   float head_x_m{-5.010006f};
   float head_y_m{-1.5702132f};
   float head_z_m{};
@@ -55,6 +56,8 @@ struct ServiceObject {
   JetwayState jetway_state{JetwayState::Parked};
   float head_error_m{-1.0f};
   float solution_error_m{-1.0f};
+  std::array<float, 4> solution_targets{};
+  bool solution_ready{};
   JetwayKinematics kinematics;
   std::vector<AnimationChannel> channels;
 };
