@@ -9,7 +9,8 @@ namespace ssa {
 
 class FloatDataRef {
 public:
-  FloatDataRef(std::string name, float initial = 0.0f, bool writable = true);
+  FloatDataRef(std::string name, float initial = 0.0f, bool writable = true,
+               float minimum = 0.0f, float maximum = 1.0f);
   ~FloatDataRef();
   FloatDataRef(const FloatDataRef&) = delete;
   FloatDataRef& operator=(const FloatDataRef&) = delete;
@@ -23,12 +24,15 @@ private:
   std::string name_;
   float value_{};
   bool writable_{};
+  float minimum_{};
+  float maximum_{1.0f};
   XPLMDataRef handle_{};
 };
 
 class DataRefRegistry {
 public:
-  FloatDataRef& create(const std::string& name, float initial = 0.0f, bool writable = false);
+  FloatDataRef& create(const std::string& name, float initial = 0.0f, bool writable = false,
+                       float minimum = 0.0f, float maximum = 1.0f);
   FloatDataRef* find(const std::string& name);
   void clear();
 
@@ -37,4 +41,3 @@ private:
 };
 
 } // namespace ssa
-

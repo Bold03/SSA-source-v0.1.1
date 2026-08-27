@@ -13,9 +13,13 @@ void label(int x, int y, const char* text, float r = 0.90f, float g = 0.95f, flo
 
 Tablet::Tablet(SceneryManager& scenery, std::function<void()> toggle_auto,
                std::function<void()> reload_config,
-               std::function<void(ServiceObject&)> toggle_object)
+               std::function<void(ServiceObject&)> toggle_object,
+               std::function<void()> toggle_vehicle_spin,
+               std::function<void(float)> set_vehicle_steering)
     : scenery_(scenery), toggle_auto_(std::move(toggle_auto)),
-      reload_config_(std::move(reload_config)), toggle_object_(std::move(toggle_object)) {
+      reload_config_(std::move(reload_config)), toggle_object_(std::move(toggle_object)),
+      toggle_vehicle_spin_(std::move(toggle_vehicle_spin)),
+      set_vehicle_steering_(std::move(set_vehicle_steering)) {
   XPLMCreateWindow_t params{};
   params.structSize = sizeof(params);
   params.left = 100; params.top = 700; params.right = 620; params.bottom = 220;
@@ -77,18 +81,22 @@ void Tablet::draw_impl() {
   }
 
   if (tab_ == 4 && developer_mode_) {
-    label(l + 22, t - 105, "DEVELOPER TOOLS  |  Moving Car Route Editor", 1.0f, 0.72f, 0.20f);
+    label(l + 22, t - 105, "DEVELOPER TOOLS  |  BUS ANIMATION TEST", 1.0f, 0.72f, 0.20f);
+    label(l + 22, t - 140,
+          vehicle_spinning_ ? "Wheel spin: RUNNING   [ STOP ]"
+                            : "Wheel spin: STOPPED   [ START ]");
+    char steering[120];
+    std::snprintf(steering, sizeof(steering), "Steering value: %+.1f", vehicle_steering_);
+    label(l + 22, t - 175, steering);
+    label(l + 22, t - 210, "[ LEFT ]     [ CENTER ]     [ RIGHT ]",
+          0.25f, 0.95f, 0.65f);
     char coords[180];
     std::snprintf(coords, sizeof(coords), "Aircraft position: %.8f, %.8f", latitude_, longitude_);
-    label(l + 22, t - 140, coords);
+    label(l + 22, t - 250, coords, 0.75f, 0.85f, 0.95f);
     char objects[120];
     std::snprintf(objects, sizeof(objects), "Loaded SSA objects: %zu", scenery_.objects().size());
-    label(l + 22, t - 175, objects);
-    label(l + 22, t - 215, "Route editor will use in-game waypoints (no Blender curve).",
-          0.75f, 0.85f, 0.95f);
-    label(l + 22, t - 250, "Model stage: prepare bus_root, body, wheels and doors.",
-          0.75f, 0.85f, 0.95f);
-    label(l + 22, t - 300, "[ RELOAD CONFIG ]", 0.25f, 0.95f, 0.65f);
+    label(l + 22, t - 280, objects, 0.75f, 0.85f, 0.95f);
+    label(l + 340, t - 280, "[ RELOAD CONFIG ]", 0.25f, 0.95f, 0.65f);
     label(l + 22, b + 42,
           realops_detected_ ? "Developer Mode | RealOps compatibility active"
                             : "Developer Mode | RealOps not detected",
@@ -160,7 +168,7 @@ int Tablet::mouse_impl(int x, int y, XPLMMouseStatus status) {
     toggle_developer_mode();
     return 1;
   }
-  if (developer_mode_ && tab_ == 4 && y < t - 275 && y > t - 325) {
+  if (developer_mode_ && tab_ == 4 && y < t - 260 && y > t - 305 && x > l + 315) {
     reload_config_();
     return 1;
   }
@@ -178,7 +186,16 @@ int Tablet::mouse_impl(int x, int y, XPLMMouseStatus status) {
     else if (y < t - 235 && y > t - 285) reload_config_();
     return 1;
   }
-  if (tab_ == 4) return 1;
+  if (tab_ == 4) {
+    if (y < t - 115 && y > t - 155) {
+      toggle_vehicle_spin_();
+    } else if (y < t - 185 && y > t - 225) {
+      if (x < l + 125) set_vehicle_steering_(-1.0f);
+      else if (x < l + 280) set_vehicle_steering_(0.0f);
+      else set_vehicle_steering_(1.0f);
+    }
+    return 1;
+  }
   if (tab_ == 1 && y < t - 85 && y > t - 145) { toggle_auto_(); return 1; }
   const int index = (t - 145 - y) / 34;
   const ServiceType list_type = tab_ == 0 ? ServiceType::Hangar

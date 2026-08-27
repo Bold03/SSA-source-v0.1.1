@@ -1,14 +1,14 @@
 # SSA — Scenery Service Animation
 
 **Developer:** BoldStudio31  
-**Status:** staged jetway docking and developer UI beta 0.8.2  
+**Status:** staged jetway docking and vehicle animation test beta 0.8.3  
 **Targets:** X-Plane 11.50+ and X-Plane 12; Windows, Linux and macOS
 
 SSA is a standalone animation controller for scenery objects. It provides custom
 datarefs for hangars, jetways, moving vehicles, ground staff and parking
 displays. It does not depend on SAM or AutoGate.
 
-## Implemented through 0.8.2
+## Implemented through 0.8.3
 
 - Dynamic custom datarefs loaded from each scenery package's `ssa.json`.
 - Smooth open/close animation with configurable speed.
@@ -19,6 +19,12 @@ displays. It does not depend on SAM or AutoGate.
   coordinates, object diagnostics and the in-game Moving Car Route Editor area.
 - The optional `boldstudio31/ssa/developer/toggle` command remains available
   for scenery authors who want a keyboard shortcut.
+- Developer Mode includes a static bus-animation test panel. It drives
+  `boldstudio31/ssa/vehicle/wheel_spin` continuously and provides LEFT,
+  CENTER and RIGHT controls for `boldstudio31/ssa/vehicle/steering`.
+- Float datarefs support configurable ranges, allowing vehicle steering to use
+  the natural `-1` (left), `0` (center), `1` (right) convention while existing
+  hangar and jetway animations remain normalized to `0..1`.
 - Nearby hangar list (2 km) and small jetway activation radius (35 m).
 - Per-channel automatic jetway targets calculated from aircraft position,
   heading, door profile and scenery-configured movement limits.

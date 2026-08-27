@@ -19,6 +19,8 @@ ssa::DataRefRegistry refs;
 std::unique_ptr<ssa::SceneryManager> scenery;
 std::unique_ptr<ssa::Tablet> tablet;
 ssa::FloatDataRef* automatic_ref{};
+ssa::FloatDataRef* vehicle_spin_ref{};
+ssa::FloatDataRef* vehicle_steering_ref{};
 XPLMDataRef lat_ref{}, lon_ref{}, heading_ref{}, icao_ref{}, door_open_ref{}, prop_ref{}, onground_ref{}, groundspeed_ref{};
 XPLMCommandRef tablet_command{};
 XPLMCommandRef reload_command{};
@@ -31,6 +33,7 @@ XPLMCommandRef jetway_disconnect_command{};
 XPLMCommandRef developer_mode_command{};
 XPLMMenuID menu{};
 bool realops_detected{};
+bool vehicle_spin_test{};
 float compatibility_timer{};
 int action_toggle{}, action_open{1}, action_close{2};
 
@@ -56,6 +59,12 @@ void log(const std::string& message) { XPLMDebugString(("[SSA] " + message + "\n
 void toggle_auto() {
   automatic_ref->set(automatic_ref->value() > 0.5f ? 0.0f : 1.0f);
   tablet->set_auto(automatic_ref->value() > 0.5f);
+}
+
+void toggle_vehicle_spin_test() { vehicle_spin_test = !vehicle_spin_test; }
+
+void set_vehicle_steering_test(float value) {
+  if (vehicle_steering_ref) vehicle_steering_ref->set(value);
 }
 
 std::string aircraft_icao() {
@@ -433,6 +442,13 @@ float flight_loop(float elapsed, float, int, void*) {
   const double lat = lat_ref ? XPLMGetDatad(lat_ref) : 0.0;
   const double lon = lon_ref ? XPLMGetDatad(lon_ref) : 0.0;
   tablet->set_position(lat, lon);
+  if (vehicle_spin_test && vehicle_spin_ref) {
+    float spin = vehicle_spin_ref->value() + elapsed * 0.65f;
+    if (spin >= 1.0f) spin -= std::floor(spin);
+    vehicle_spin_ref->set(spin);
+  }
+  tablet->set_vehicle_test(vehicle_spin_test,
+                           vehicle_steering_ref ? vehicle_steering_ref->value() : 0.0f);
   compatibility_timer += elapsed;
   if (compatibility_timer >= 1.0f) {
     compatibility_timer = 0.0f;
@@ -484,12 +500,16 @@ PLUGIN_API int XPluginStart(char* name, char* signature, char* description) {
     // Start safely in manual mode so a newly-authored jetway cannot deploy
     // before its kinematic limits have been tested at the airport.
     automatic_ref = &refs.create("boldstudio31/ssa/jetway/automatic", 0.0f, true);
+    vehicle_spin_ref = &refs.create("boldstudio31/ssa/vehicle/wheel_spin", 0.0f, true);
+    vehicle_steering_ref = &refs.create("boldstudio31/ssa/vehicle/steering", 0.0f, true,
+                                        -1.0f, 1.0f);
     scenery = std::make_unique<ssa::SceneryManager>(refs);
     char root[2048]{};
     XPLMGetSystemPath(root);
     scenery->load(root);
     tablet = std::make_unique<ssa::Tablet>(*scenery, toggle_auto, reload_scenery,
-                                           toggle_tablet_object);
+                                           toggle_tablet_object, toggle_vehicle_spin_test,
+                                           set_vehicle_steering_test);
 
     lat_ref = XPLMFindDataRef("sim/flightmodel/position/latitude");
     lon_ref = XPLMFindDataRef("sim/flightmodel/position/longitude");
@@ -525,7 +545,7 @@ PLUGIN_API int XPluginStart(char* name, char* signature, char* description) {
     XPLMAppendMenuItem(menu, "Toggle nearest hangar", reinterpret_cast<void*>(3), 0);
     XPLMAppendMenuItem(menu, "Toggle nearest jetway", reinterpret_cast<void*>(4), 0);
     XPLMRegisterFlightLoopCallback(flight_loop, 0.05f, nullptr);
-    log("SSA 0.8.2 started: " + std::to_string(scenery->objects().size()) +
+    log("SSA 0.8.3 started: " + std::to_string(scenery->objects().size()) +
         " object(s), L1 door dataref " + (door_open_ref ? "detected" : "not found"));
     return 1;
   } catch (const std::exception& e) {

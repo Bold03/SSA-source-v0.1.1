@@ -4,8 +4,11 @@
 
 namespace ssa {
 
-FloatDataRef::FloatDataRef(std::string name, float initial, bool writable)
-    : name_(std::move(name)), value_(initial), writable_(writable) {
+FloatDataRef::FloatDataRef(std::string name, float initial, bool writable,
+                           float minimum, float maximum)
+    : name_(std::move(name)), value_(initial), writable_(writable),
+      minimum_(std::min(minimum, maximum)), maximum_(std::max(minimum, maximum)) {
+  value_ = std::clamp(value_, minimum_, maximum_);
   handle_ = XPLMRegisterDataAccessor(
       name_.c_str(), xplmType_Float, writable_ ? 1 : 0,
       nullptr, nullptr, read, writable_ ? write : nullptr,
@@ -28,12 +31,13 @@ void FloatDataRef::write(void* refcon, float value) {
 }
 
 void FloatDataRef::set(float value) {
-  value_ = std::clamp(value, 0.0f, 1.0f);
+  value_ = std::clamp(value, minimum_, maximum_);
 }
 
-FloatDataRef& DataRefRegistry::create(const std::string& name, float initial, bool writable) {
+FloatDataRef& DataRefRegistry::create(const std::string& name, float initial, bool writable,
+                                      float minimum, float maximum) {
   if (auto* existing = find(name)) return *existing;
-  auto item = std::make_unique<FloatDataRef>(name, initial, writable);
+  auto item = std::make_unique<FloatDataRef>(name, initial, writable, minimum, maximum);
   auto* result = item.get();
   refs_.emplace(name, std::move(item));
   return *result;
@@ -47,4 +51,3 @@ FloatDataRef* DataRefRegistry::find(const std::string& name) {
 void DataRefRegistry::clear() { refs_.clear(); }
 
 } // namespace ssa
-
