@@ -49,6 +49,7 @@ private:
   void show(float spin, float steering);
   void add_point_at(float x, float z);
   void build_smooth_test_path();
+  void open_planner();
   void close_planner();
   void draw_planner();
   int planner_mouse(int x, int y, XPLMMouseStatus status);
@@ -74,7 +75,7 @@ private:
   float speed_mps_{4.0f};
   float heading_offset_deg_{180.0f};
   float steering_multiplier_{-1.0f};
-  int smoothing_iterations_{2};
+  int smoothing_iterations_{3};
   float spin_{};
   float display_steering_{};
   float planner_height_m_{160.0f};
@@ -82,6 +83,7 @@ private:
   float planner_center_y_{};
   float planner_center_z_{};
   bool planner_active_{};
+  bool return_to_planner_after_test_{};
   size_t test_index_{};
   RoutePoint current_{};
   std::vector<RoutePoint> points_;

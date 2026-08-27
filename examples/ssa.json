@@ -9,7 +9,7 @@
       "ground_offset_m": 0.445,
       "heading_offset_deg": 180.0,
       "steering_multiplier": -1.0,
-      "smoothing_iterations": 2,
+      "smoothing_iterations": 3,
       "speed_mps": 4.0
     }
   ],

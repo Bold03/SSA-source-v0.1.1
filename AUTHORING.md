@@ -13,7 +13,7 @@ Add a vehicle model entry at the top level of `ssa.json`:
     "ground_offset_m": 0.445,
     "heading_offset_deg": 180.0,
     "steering_multiplier": -1.0,
-    "smoothing_iterations": 2,
+    "smoothing_iterations": 3,
     "speed_mps": 4.0
   }
 ]
@@ -28,8 +28,9 @@ boldstudio31/ssa/vehicle/steering    (-1..0..1, no loop)
 
 In X-Plane, open the SSA tablet, enable Developer Mode under Settings and open
 the DEV tab. Start the top-down planner at the aircraft, click the apron to add
-numbered GPS waypoints, use the arrow keys to pan and the mouse wheel to zoom,
-then test or save from the boxed overlay toolbar. `steering_multiplier` reverses
+numbered GPS waypoints, use the arrow keys or on-screen direction pad to pan and
+the mouse wheel to zoom, then test or save from the boxed overlay toolbar. After
+a test finishes, SSA returns to the same planning view. `steering_multiplier` reverses
 an OBJ whose front-wheel animation faces the wrong direction. Route testing uses
 `smoothing_iterations` (0 to 4) to round waypoint corners. SSA writes
 `ssa_routes.json` beside the scenery's `ssa.json`.

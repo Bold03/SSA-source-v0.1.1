@@ -9,6 +9,11 @@ void label(int x, int y, const char* text, float r = 0.90f, float g = 0.95f, flo
   float color[] = {r, g, b};
   XPLMDrawString(color, x, y, const_cast<char*>(text), nullptr, xplmFont_Proportional);
 }
+void button(int left, int top, int right, int bottom, const char* text,
+            float red = 0.25f, float green = 0.95f, float blue = 0.65f) {
+  XPLMDrawTranslucentDarkBox(left, top, right, bottom);
+  label(left + 10, bottom + 10, text, red, green, blue);
+}
 }
 
 Tablet::Tablet(SceneryManager& scenery, RouteEditor& route_editor,
@@ -93,20 +98,23 @@ void Tablet::draw_impl() {
       label(l + 22, t - 190, "Add vehicle_models to ssa.json, then reload.");
     } else if (editor_state == RouteEditorState::Idle) {
       label(l + 22, t - 145, route_editor_.status().c_str());
-      label(l + 22, t - 190, "[ PLAN ROUTE - TOP DOWN ]", 0.25f, 0.95f, 0.65f);
+      button(l + 22, t - 165, l + 245, t - 205, "PLAN ROUTE - TOP DOWN");
       label(l + 22, t - 230, "Click the apron to add numbered GPS waypoints.", 0.75f, 0.85f, 0.95f);
     } else if (editor_state == RouteEditorState::Editing) {
       char route_info[180];
       std::snprintf(route_info, sizeof(route_info), "Waypoints: %zu  |  Heading: %.0f deg",
                     route_editor_.point_count(), route_editor_.heading());
       label(l + 22, t - 135, route_info);
-      label(l + 22, t - 170, "[ LEFT 15 ]    [ FORWARD 2 M ]    [ RIGHT 15 ]",
-            0.25f, 0.95f, 0.65f);
-      label(l + 22, t - 205, "[ BACK 2 M ]   [ ADD POINT ]      [ UNDO ]",
-            0.25f, 0.95f, 0.65f);
-      label(l + 22, t - 240, "[ TEST ROUTE ] [ SAVE ROUTE ]     [ CANCEL ]",
-            1.0f, 0.72f, 0.20f);
-      label(l + 22, t - 275, route_editor_.status().c_str(), 0.75f, 0.85f, 0.95f);
+      button(l + 22, t - 148, l + 152, t - 180, "LEFT 15");
+      button(l + 172, t - 148, l + 342, t - 180, "FORWARD 2 M");
+      button(l + 362, t - 148, r - 22, t - 180, "RIGHT 15");
+      button(l + 22, t - 190, l + 152, t - 222, "BACK 2 M");
+      button(l + 172, t - 190, l + 342, t - 222, "ADD POINT");
+      button(l + 362, t - 190, r - 22, t - 222, "UNDO");
+      button(l + 22, t - 232, l + 152, t - 264, "TEST ROUTE", 1.0f, 0.72f, 0.20f);
+      button(l + 172, t - 232, l + 342, t - 264, "SAVE ROUTE", 1.0f, 0.72f, 0.20f);
+      button(l + 362, t - 232, r - 22, t - 264, "CANCEL", 1.0f, 0.72f, 0.20f);
+      label(l + 22, t - 290, route_editor_.status().c_str(), 0.75f, 0.85f, 0.95f);
     } else if (editor_state == RouteEditorState::Planning) {
       label(l + 22, t - 150, "TOP-DOWN PLANNER ACTIVE", 1.0f, 0.72f, 0.20f);
       label(l + 22, t - 195, "Use the full-screen overlay to add GPS waypoints.");
@@ -115,7 +123,7 @@ void Tablet::draw_impl() {
       std::snprintf(testing, sizeof(testing), "TESTING ROUTE  |  Waypoints: %zu",
                     route_editor_.point_count());
       label(l + 22, t - 150, testing, 1.0f, 0.72f, 0.20f);
-      label(l + 22, t - 195, "[ STOP TEST ]", 0.25f, 0.95f, 0.65f);
+      button(l + 22, t - 170, l + 160, t - 205, "STOP TEST");
       label(l + 22, t - 235, route_editor_.status().c_str());
     }
     label(l + 340, t - 300, "[ RELOAD CONFIG ]", 0.25f, 0.95f, 0.65f);
@@ -210,24 +218,28 @@ int Tablet::mouse_impl(int x, int y, XPLMMouseStatus status) {
   }
   if (tab_ == 4) {
     const auto editor_state = route_editor_.state();
-    if (editor_state == RouteEditorState::Idle && y < t - 165 && y > t - 210) {
+    if (editor_state == RouteEditorState::Idle && x >= l + 22 && x <= l + 245 &&
+        y <= t - 165 && y >= t - 205) {
       route_editor_.begin_planner(latitude_, longitude_, heading_);
     } else if (editor_state == RouteEditorState::Editing) {
-      if (y < t - 145 && y > t - 185) {
-        if (x < l + 145) route_editor_.turn(-15.0f);
-        else if (x < l + 340) route_editor_.move(2.0f);
-        else route_editor_.turn(15.0f);
-      } else if (y < t - 185 && y > t - 220) {
-        if (x < l + 145) route_editor_.move(-2.0f);
-        else if (x < l + 340) route_editor_.add_point();
-        else route_editor_.undo_point();
-      } else if (y < t - 220 && y > t - 255) {
-        if (x < l + 155) route_editor_.start_test();
-        else if (x < l + 355) route_editor_.save();
-        else route_editor_.cancel();
+      const bool column_left = x >= l + 22 && x <= l + 152;
+      const bool column_middle = x >= l + 172 && x <= l + 342;
+      const bool column_right = x >= l + 362 && x <= r - 22;
+      if (y <= t - 148 && y >= t - 180) {
+        if (column_left) route_editor_.turn(-15.0f);
+        else if (column_middle) route_editor_.move(2.0f);
+        else if (column_right) route_editor_.turn(15.0f);
+      } else if (y <= t - 190 && y >= t - 222) {
+        if (column_left) route_editor_.move(-2.0f);
+        else if (column_middle) route_editor_.add_point();
+        else if (column_right) route_editor_.undo_point();
+      } else if (y <= t - 232 && y >= t - 264) {
+        if (column_left) route_editor_.start_test();
+        else if (column_middle) route_editor_.save();
+        else if (column_right) route_editor_.cancel();
       }
-    } else if (editor_state == RouteEditorState::Testing &&
-               y < t - 170 && y > t - 215) {
+    } else if (editor_state == RouteEditorState::Testing && x >= l + 22 &&
+               x <= l + 160 && y <= t - 170 && y >= t - 205) {
       route_editor_.stop_test();
     }
     return 1;
