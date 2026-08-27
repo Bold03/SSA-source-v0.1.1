@@ -3,6 +3,7 @@
 #include <nlohmann/json.hpp>
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <stdexcept>
@@ -23,18 +24,22 @@ float normalize_heading(float value) {
 RouteEditor::~RouteEditor() { unload(); }
 
 void RouteEditor::unload() {
+  if (planner_active_) close_planner();
+  if (planner_window_) XPLMDestroyWindow(planner_window_);
   if (instance_) XPLMDestroyInstance(instance_);
   if (object_) XPLMUnloadObject(object_);
   if (probe_) XPLMDestroyProbe(probe_);
   instance_ = nullptr;
   object_ = nullptr;
   probe_ = nullptr;
+  planner_window_ = nullptr;
   points_.clear();
   state_ = RouteEditorState::Unavailable;
 }
 
 bool RouteEditor::load(const std::string& xplane_root) {
   unload();
+  field_of_view_ref_ = XPLMFindDataRef("sim/graphics/view/field_of_view_deg");
   const fs::path custom = fs::path(xplane_root) / "Custom Scenery";
   try {
     if (!fs::exists(custom)) {
@@ -53,6 +58,7 @@ bool RouteEditor::load(const std::string& xplane_root) {
       model_label_ = model.value("label", model_id_);
       ground_offset_m_ = model.value("ground_offset_m", 0.445f);
       speed_mps_ = std::clamp(model.value("speed_mps", 4.0f), 0.5f, 15.0f);
+      heading_offset_deg_ = model.value("heading_offset_deg", 180.0f);
       scenery_directory_ = entry.path().string();
       route_path_ = (entry.path() / "ssa_routes.json").string();
       const fs::path object_path = entry.path() / model.at("object").get<std::string>();
@@ -97,7 +103,7 @@ void RouteEditor::show(float spin, float steering) {
   draw.x = current_.x;
   draw.y = current_.y;
   draw.z = current_.z;
-  draw.heading = normalize_heading(current_.heading);
+  draw.heading = normalize_heading(current_.heading + heading_offset_deg_);
   const float data[] = {spin, steering};
   XPLMInstanceSetPosition(instance_, &draw, data);
 }
@@ -114,6 +120,197 @@ void RouteEditor::create_route(double latitude, double longitude, float heading)
   spin_ = 0.0f;
   state_ = RouteEditorState::Editing;
   status_ = "Route created; first point added";
+  show(spin_, 0.0f);
+}
+
+void RouteEditor::begin_planner(double latitude, double longitude, float heading) {
+  create_route(latitude, longitude, heading);
+  if (state_ != RouteEditorState::Editing) return;
+  planner_center_x_ = current_.x;
+  planner_center_y_ = current_.y;
+  planner_center_z_ = current_.z;
+  int left{}, top{}, right{}, bottom{};
+  XPLMGetScreenBoundsGlobal(&left, &top, &right, &bottom);
+  if (!planner_window_) {
+    XPLMCreateWindow_t params{};
+    params.structSize = sizeof(params);
+    params.left = left;
+    params.top = top;
+    params.right = right;
+    params.bottom = bottom;
+    params.visible = 1;
+    params.drawWindowFunc = planner_draw;
+    params.handleMouseClickFunc = planner_mouse_cb;
+    params.handleKeyFunc = planner_key;
+    params.handleCursorFunc = planner_cursor;
+    params.handleMouseWheelFunc = planner_wheel_cb;
+    params.refcon = this;
+    params.layer = xplm_WindowLayerFlightOverlay;
+    params.decorateAsFloatingWindow = xplm_WindowDecorationNone;
+    planner_window_ = XPLMCreateWindowEx(&params);
+  } else {
+    XPLMSetWindowGeometry(planner_window_, left, top, right, bottom);
+    XPLMSetWindowIsVisible(planner_window_, 1);
+  }
+  if (!planner_window_) {
+    state_ = RouteEditorState::Editing;
+    status_ = "Cannot create top-down planner overlay";
+    return;
+  }
+  planner_active_ = true;
+  state_ = RouteEditorState::Planning;
+  status_ = "Planner active: click ground to add GPS markers";
+  XPLMControlCamera(xplm_ControlCameraUntilViewChanges, camera_control, this);
+}
+
+void RouteEditor::close_planner() {
+  if (!planner_active_) return;
+  planner_active_ = false;
+  if (planner_window_) XPLMSetWindowIsVisible(planner_window_, 0);
+  XPLMDontControlCamera();
+  if (state_ == RouteEditorState::Planning) state_ = RouteEditorState::Editing;
+}
+
+int RouteEditor::camera_control(XPLMCameraPosition_t* position, int losing_control,
+                                void* refcon) {
+  auto* self = static_cast<RouteEditor*>(refcon);
+  if (losing_control || !position || !self->planner_active_) {
+    self->planner_active_ = false;
+    if (self->planner_window_) XPLMSetWindowIsVisible(self->planner_window_, 0);
+    if (self->state_ == RouteEditorState::Planning)
+      self->state_ = RouteEditorState::Editing;
+    return 0;
+  }
+  position->x = self->planner_center_x_;
+  position->y = self->planner_center_y_ + self->planner_height_m_;
+  position->z = self->planner_center_z_;
+  position->pitch = -90.0f;
+  position->heading = 0.0f;
+  position->roll = 0.0f;
+  position->zoom = 1.0f;
+  return 1;
+}
+
+void RouteEditor::planner_draw(XPLMWindowID, void* refcon) {
+  static_cast<RouteEditor*>(refcon)->draw_planner();
+}
+
+void RouteEditor::draw_planner() {
+  if (!planner_active_ || !planner_window_) return;
+  int left{}, top{}, right{}, bottom{};
+  XPLMGetWindowGeometry(planner_window_, &left, &top, &right, &bottom);
+  float title_color[] = {0.25f, 0.95f, 0.65f};
+  float marker_color[] = {1.0f, 0.72f, 0.20f};
+  float route_color[] = {0.55f, 1.0f, 0.70f};
+  char title[] = "SSA ROUTE PLANNER | CLICK GROUND: ADD GPS POINT | MOUSE WHEEL: ZOOM";
+  XPLMDrawString(title_color, left + 24, top - 30, title, nullptr,
+                 xplmFont_Proportional);
+  char toolbar[] = "[ UNDO ]   [ TEST ]   [ SAVE ]                                      [ EXIT ]";
+  XPLMDrawString(title_color, left + 24, top - 58, toolbar, nullptr,
+                 xplmFont_Proportional);
+  const float width = static_cast<float>(std::max(1, right - left));
+  const float height = static_cast<float>(std::max(1, top - bottom));
+  const float half_width_m = planner_half_width();
+  const float half_height_m = half_width_m * height / width;
+  auto screen = [&](const RoutePoint& point, int& sx, int& sy) {
+    sx = static_cast<int>(left + width * 0.5f +
+                          (point.x - planner_center_x_) / half_width_m * width * 0.5f);
+    sy = static_cast<int>(bottom + height * 0.5f -
+                          (point.z - planner_center_z_) / half_height_m * height * 0.5f);
+  };
+  for (size_t i = 1; i < points_.size(); ++i) {
+    int x1{}, y1{}, x2{}, y2{};
+    screen(points_[i - 1], x1, y1);
+    screen(points_[i], x2, y2);
+    const int dots = std::max(1, static_cast<int>(std::hypot(x2 - x1, y2 - y1) / 18.0));
+    for (int dot = 1; dot < dots; ++dot) {
+      const float ratio = static_cast<float>(dot) / static_cast<float>(dots);
+      char point[] = ".";
+      XPLMDrawString(route_color, static_cast<int>(x1 + (x2 - x1) * ratio),
+                     static_cast<int>(y1 + (y2 - y1) * ratio), point, nullptr,
+                     xplmFont_Proportional);
+    }
+  }
+  for (size_t i = 0; i < points_.size(); ++i) {
+    int sx{}, sy{};
+    screen(points_[i], sx, sy);
+    char marker[24];
+    std::snprintf(marker, sizeof(marker), "[ %zu ]", i + 1);
+    XPLMDrawString(marker_color, sx - 10, sy, marker, nullptr,
+                   xplmFont_Proportional);
+  }
+}
+
+int RouteEditor::planner_mouse_cb(XPLMWindowID, int x, int y, XPLMMouseStatus status,
+                                  void* refcon) {
+  return static_cast<RouteEditor*>(refcon)->planner_mouse(x, y, status);
+}
+
+int RouteEditor::planner_mouse(int x, int y, XPLMMouseStatus status) {
+  if (!planner_active_ || status != xplm_MouseDown) return 1;
+  int left{}, top{}, right{}, bottom{};
+  XPLMGetWindowGeometry(planner_window_, &left, &top, &right, &bottom);
+  if (y > top - 80) {
+    if (x < left + 115) undo_point();
+    else if (x < left + 215) {
+      close_planner();
+      start_test();
+    } else if (x < left + 315) {
+      state_ = RouteEditorState::Editing;
+      save();
+      close_planner();
+    } else if (x > right - 115) {
+      close_planner();
+    }
+    return 1;
+  }
+  const float width = static_cast<float>(std::max(1, right - left));
+  const float height = static_cast<float>(std::max(1, top - bottom));
+  const float half_width_m = planner_half_width();
+  const float half_height_m = half_width_m * height / width;
+  const float world_x = planner_center_x_ +
+                        ((x - left) / width * 2.0f - 1.0f) * half_width_m;
+  const float world_z = planner_center_z_ -
+                        ((y - bottom) / height * 2.0f - 1.0f) * half_height_m;
+  add_point_at(world_x, world_z);
+  return 1;
+}
+
+void RouteEditor::planner_key(XPLMWindowID, char, XPLMKeyFlags, char, void*, int) {}
+
+XPLMCursorStatus RouteEditor::planner_cursor(XPLMWindowID, int, int, void*) {
+  return xplm_CursorArrow;
+}
+
+int RouteEditor::planner_wheel_cb(XPLMWindowID, int x, int y, int wheel, int clicks,
+                                  void* refcon) {
+  return static_cast<RouteEditor*>(refcon)->planner_wheel(x, y, wheel, clicks);
+}
+
+int RouteEditor::planner_wheel(int, int, int wheel, int clicks) {
+  if (!planner_active_ || wheel != 0) return 1;
+  planner_height_m_ = std::clamp(planner_height_m_ - clicks * 12.0f, 50.0f, 500.0f);
+  return 1;
+}
+
+float RouteEditor::planner_half_width() const {
+  const float field_of_view = field_of_view_ref_
+                                  ? std::clamp(XPLMGetDataf(field_of_view_ref_), 20.0f, 120.0f)
+                                  : 60.0f;
+  return planner_height_m_ * std::tan(field_of_view * pi / 360.0f);
+}
+
+void RouteEditor::add_point_at(float x, float z) {
+  if (state_ != RouteEditorState::Planning) return;
+  RoutePoint point{x, terrain_y(x, z, current_.y), z, current_.heading};
+  if (!points_.empty()) {
+    const auto& previous = points_.back();
+    point.heading = normalize_heading(std::atan2(point.x - previous.x,
+                                                  -(point.z - previous.z)) * 180.0f / pi);
+  }
+  points_.push_back(point);
+  current_ = point;
+  status_ = "GPS waypoint " + std::to_string(points_.size()) + " added";
   show(spin_, 0.0f);
 }
 
@@ -144,7 +341,8 @@ void RouteEditor::add_point() {
 }
 
 void RouteEditor::undo_point() {
-  if (state_ != RouteEditorState::Editing || points_.size() <= 1) return;
+  if ((state_ != RouteEditorState::Editing && state_ != RouteEditorState::Planning) ||
+      points_.size() <= 1) return;
   points_.pop_back();
   current_ = points_.back();
   status_ = "Last waypoint removed";
@@ -159,7 +357,8 @@ float RouteEditor::heading_delta(float from, float to) {
 }
 
 void RouteEditor::start_test() {
-  if (state_ != RouteEditorState::Editing || points_.size() < 2) {
+  if ((state_ != RouteEditorState::Editing && state_ != RouteEditorState::Planning) ||
+      points_.size() < 2) {
     status_ = "Add at least two waypoints";
     return;
   }
@@ -239,6 +438,7 @@ bool RouteEditor::save() {
 
 void RouteEditor::cancel() {
   if (state_ == RouteEditorState::Unavailable) return;
+  if (planner_active_) close_planner();
   points_.clear();
   state_ = RouteEditorState::Idle;
   status_ = "Route editor idle";

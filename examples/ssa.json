@@ -7,6 +7,7 @@
       "label": "Gapura Apron Bus",
       "object": "object/Gapura_bus.obj",
       "ground_offset_m": 0.445,
+      "heading_offset_deg": 180.0,
       "speed_mps": 4.0
     }
   ],

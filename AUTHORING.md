@@ -11,6 +11,7 @@ Add a vehicle model entry at the top level of `ssa.json`:
     "label": "Gapura Apron Bus",
     "object": "object/Gapura_bus.obj",
     "ground_offset_m": 0.445,
+    "heading_offset_deg": 180.0,
     "speed_mps": 4.0
   }
 ]
@@ -24,9 +25,9 @@ boldstudio31/ssa/vehicle/steering    (-1..0..1, no loop)
 ```
 
 In X-Plane, open the SSA tablet, enable Developer Mode under Settings and open
-the DEV tab. Create the route at the aircraft, move and turn the bus, add a
-waypoint at each useful corner, then test and save. SSA writes
-`ssa_routes.json` beside the scenery's `ssa.json`.
+the DEV tab. Start the top-down planner at the aircraft, click the apron to add
+numbered GPS waypoints, use the mouse wheel to zoom, then test or save from the
+overlay toolbar. SSA writes `ssa_routes.json` beside the scenery's `ssa.json`.
 
 ## Folder layout
 

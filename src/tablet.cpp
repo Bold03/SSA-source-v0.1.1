@@ -93,8 +93,8 @@ void Tablet::draw_impl() {
       label(l + 22, t - 190, "Add vehicle_models to ssa.json, then reload.");
     } else if (editor_state == RouteEditorState::Idle) {
       label(l + 22, t - 145, route_editor_.status().c_str());
-      label(l + 22, t - 190, "[ CREATE ROUTE AT AIRCRAFT ]", 0.25f, 0.95f, 0.65f);
-      label(l + 22, t - 230, "The first waypoint is added automatically.", 0.75f, 0.85f, 0.95f);
+      label(l + 22, t - 190, "[ PLAN ROUTE - TOP DOWN ]", 0.25f, 0.95f, 0.65f);
+      label(l + 22, t - 230, "Click the apron to add numbered GPS waypoints.", 0.75f, 0.85f, 0.95f);
     } else if (editor_state == RouteEditorState::Editing) {
       char route_info[180];
       std::snprintf(route_info, sizeof(route_info), "Waypoints: %zu  |  Heading: %.0f deg",
@@ -107,6 +107,9 @@ void Tablet::draw_impl() {
       label(l + 22, t - 240, "[ TEST ROUTE ] [ SAVE ROUTE ]     [ CANCEL ]",
             1.0f, 0.72f, 0.20f);
       label(l + 22, t - 275, route_editor_.status().c_str(), 0.75f, 0.85f, 0.95f);
+    } else if (editor_state == RouteEditorState::Planning) {
+      label(l + 22, t - 150, "TOP-DOWN PLANNER ACTIVE", 1.0f, 0.72f, 0.20f);
+      label(l + 22, t - 195, "Use the full-screen overlay to add GPS waypoints.");
     } else {
       char testing[160];
       std::snprintf(testing, sizeof(testing), "TESTING ROUTE  |  Waypoints: %zu",
@@ -208,7 +211,7 @@ int Tablet::mouse_impl(int x, int y, XPLMMouseStatus status) {
   if (tab_ == 4) {
     const auto editor_state = route_editor_.state();
     if (editor_state == RouteEditorState::Idle && y < t - 165 && y > t - 210) {
-      route_editor_.create_route(latitude_, longitude_, heading_);
+      route_editor_.begin_planner(latitude_, longitude_, heading_);
     } else if (editor_state == RouteEditorState::Editing) {
       if (y < t - 145 && y > t - 185) {
         if (x < l + 145) route_editor_.turn(-15.0f);
