@@ -48,6 +48,7 @@ private:
   float terrain_y(float x, float z, float fallback) const;
   void show(float spin, float steering);
   void add_point_at(float x, float z);
+  void build_smooth_test_path();
   void close_planner();
   void draw_planner();
   int planner_mouse(int x, int y, XPLMMouseStatus status);
@@ -72,7 +73,10 @@ private:
   float ground_offset_m_{0.445f};
   float speed_mps_{4.0f};
   float heading_offset_deg_{180.0f};
+  float steering_multiplier_{-1.0f};
+  int smoothing_iterations_{2};
   float spin_{};
+  float display_steering_{};
   float planner_height_m_{160.0f};
   float planner_center_x_{};
   float planner_center_y_{};
@@ -81,6 +85,7 @@ private:
   size_t test_index_{};
   RoutePoint current_{};
   std::vector<RoutePoint> points_;
+  std::vector<RoutePoint> test_points_;
   XPLMObjectRef object_{};
   XPLMInstanceRef instance_{};
   XPLMProbeRef probe_{};

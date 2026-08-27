@@ -59,6 +59,8 @@ bool RouteEditor::load(const std::string& xplane_root) {
       ground_offset_m_ = model.value("ground_offset_m", 0.445f);
       speed_mps_ = std::clamp(model.value("speed_mps", 4.0f), 0.5f, 15.0f);
       heading_offset_deg_ = model.value("heading_offset_deg", 180.0f);
+      steering_multiplier_ = model.value("steering_multiplier", -1.0f);
+      smoothing_iterations_ = std::clamp(model.value("smoothing_iterations", 2), 0, 4);
       scenery_directory_ = entry.path().string();
       route_path_ = (entry.path() / "ssa_routes.json").string();
       const fs::path object_path = entry.path() / model.at("object").get<std::string>();
@@ -104,7 +106,7 @@ void RouteEditor::show(float spin, float steering) {
   draw.y = current_.y;
   draw.z = current_.z;
   draw.heading = normalize_heading(current_.heading + heading_offset_deg_);
-  const float data[] = {spin, steering};
+  const float data[] = {spin, std::clamp(steering * steering_multiplier_, -1.0f, 1.0f)};
   XPLMInstanceSetPosition(instance_, &draw, data);
 }
 
@@ -160,12 +162,14 @@ void RouteEditor::begin_planner(double latitude, double longitude, float heading
   planner_active_ = true;
   state_ = RouteEditorState::Planning;
   status_ = "Planner active: click ground to add GPS markers";
+  XPLMTakeKeyboardFocus(planner_window_);
   XPLMControlCamera(xplm_ControlCameraUntilViewChanges, camera_control, this);
 }
 
 void RouteEditor::close_planner() {
   if (!planner_active_) return;
   planner_active_ = false;
+  XPLMTakeKeyboardFocus(nullptr);
   if (planner_window_) XPLMSetWindowIsVisible(planner_window_, 0);
   XPLMDontControlCamera();
   if (state_ == RouteEditorState::Planning) state_ = RouteEditorState::Editing;
@@ -202,12 +206,20 @@ void RouteEditor::draw_planner() {
   float title_color[] = {0.25f, 0.95f, 0.65f};
   float marker_color[] = {1.0f, 0.72f, 0.20f};
   float route_color[] = {0.55f, 1.0f, 0.70f};
-  char title[] = "SSA ROUTE PLANNER | CLICK GROUND: ADD GPS POINT | MOUSE WHEEL: ZOOM";
+  char title[] = "SSA ROUTE PLANNER | CLICK: ADD GPS POINT | ARROW KEYS: PAN | WHEEL: ZOOM";
   XPLMDrawString(title_color, left + 24, top - 30, title, nullptr,
                  xplmFont_Proportional);
-  char toolbar[] = "[ UNDO ]   [ TEST ]   [ SAVE ]                                      [ EXIT ]";
-  XPLMDrawString(title_color, left + 24, top - 58, toolbar, nullptr,
-                 xplmFont_Proportional);
+  const int button_top = top - 42;
+  const int button_bottom = top - 74;
+  auto draw_button = [&](int button_left, int button_right, const char* label) {
+    XPLMDrawTranslucentDarkBox(button_left, button_top, button_right, button_bottom);
+    XPLMDrawString(title_color, button_left + 12, top - 63,
+                   const_cast<char*>(label), nullptr, xplmFont_Proportional);
+  };
+  draw_button(left + 24, left + 110, "UNDO");
+  draw_button(left + 124, left + 210, "TEST");
+  draw_button(left + 224, left + 310, "SAVE");
+  draw_button(right - 110, right - 24, "EXIT");
   const float width = static_cast<float>(std::max(1, right - left));
   const float height = static_cast<float>(std::max(1, top - bottom));
   const float half_width_m = planner_half_width();
@@ -250,20 +262,23 @@ int RouteEditor::planner_mouse(int x, int y, XPLMMouseStatus status) {
   if (!planner_active_ || status != xplm_MouseDown) return 1;
   int left{}, top{}, right{}, bottom{};
   XPLMGetWindowGeometry(planner_window_, &left, &top, &right, &bottom);
-  if (y > top - 80) {
-    if (x < left + 115) undo_point();
-    else if (x < left + 215) {
+  const bool toolbar_y = y >= top - 74 && y <= top - 42;
+  if (toolbar_y) {
+    if (x >= left + 24 && x <= left + 110) undo_point();
+    else if (x >= left + 124 && x <= left + 210) {
       close_planner();
       start_test();
-    } else if (x < left + 315) {
+    } else if (x >= left + 224 && x <= left + 310) {
       state_ = RouteEditorState::Editing;
       save();
       close_planner();
-    } else if (x > right - 115) {
+    } else if (x >= right - 110 && x <= right - 24) {
       close_planner();
     }
     return 1;
   }
+  // Keep the title/toolbar band from accidentally creating a waypoint.
+  if (y > top - 90) return 1;
   const float width = static_cast<float>(std::max(1, right - left));
   const float height = static_cast<float>(std::max(1, top - bottom));
   const float half_width_m = planner_half_width();
@@ -276,7 +291,19 @@ int RouteEditor::planner_mouse(int x, int y, XPLMMouseStatus status) {
   return 1;
 }
 
-void RouteEditor::planner_key(XPLMWindowID, char, XPLMKeyFlags, char, void*, int) {}
+void RouteEditor::planner_key(XPLMWindowID, char key, XPLMKeyFlags flags, char,
+                              void* refcon, int losing_focus) {
+  auto* self = static_cast<RouteEditor*>(refcon);
+  if (!self || losing_focus || !self->planner_active_ || (flags & xplm_UpFlag)) return;
+  const float step = std::max(5.0f, self->planner_height_m_ * 0.08f);
+  switch (static_cast<unsigned char>(key)) {
+    case XPLM_KEY_LEFT: self->planner_center_x_ -= step; break;
+    case XPLM_KEY_RIGHT: self->planner_center_x_ += step; break;
+    case XPLM_KEY_UP: self->planner_center_z_ -= step; break;
+    case XPLM_KEY_DOWN: self->planner_center_z_ += step; break;
+    default: break;
+  }
+}
 
 XPLMCursorStatus RouteEditor::planner_cursor(XPLMWindowID, int, int, void*) {
   return xplm_CursorArrow;
@@ -356,15 +383,47 @@ float RouteEditor::heading_delta(float from, float to) {
   return result;
 }
 
+void RouteEditor::build_smooth_test_path() {
+  test_points_ = points_;
+  if (test_points_.size() >= 3) {
+    for (int iteration = 0; iteration < smoothing_iterations_; ++iteration) {
+      std::vector<RoutePoint> smooth;
+      smooth.reserve(test_points_.size() * 2);
+      smooth.push_back(test_points_.front());
+      for (size_t i = 0; i + 1 < test_points_.size(); ++i) {
+        const auto& a = test_points_[i];
+        const auto& b = test_points_[i + 1];
+        smooth.push_back({a.x * 0.75f + b.x * 0.25f,
+                          a.y * 0.75f + b.y * 0.25f,
+                          a.z * 0.75f + b.z * 0.25f, 0.0f});
+        smooth.push_back({a.x * 0.25f + b.x * 0.75f,
+                          a.y * 0.25f + b.y * 0.75f,
+                          a.z * 0.25f + b.z * 0.75f, 0.0f});
+      }
+      smooth.push_back(test_points_.back());
+      test_points_ = std::move(smooth);
+    }
+  }
+  for (size_t i = 0; i + 1 < test_points_.size(); ++i) {
+    const float dx = test_points_[i + 1].x - test_points_[i].x;
+    const float dz = test_points_[i + 1].z - test_points_[i].z;
+    test_points_[i].heading = normalize_heading(std::atan2(dx, -dz) * 180.0f / pi);
+  }
+  if (test_points_.size() > 1)
+    test_points_.back().heading = test_points_[test_points_.size() - 2].heading;
+}
+
 void RouteEditor::start_test() {
   if ((state_ != RouteEditorState::Editing && state_ != RouteEditorState::Planning) ||
       points_.size() < 2) {
     status_ = "Add at least two waypoints";
     return;
   }
-  current_ = points_.front();
+  build_smooth_test_path();
+  current_ = test_points_.front();
   test_index_ = 1;
   spin_ = 0.0f;
+  display_steering_ = 0.0f;
   state_ = RouteEditorState::Testing;
   status_ = "Route test running";
   show(spin_, 0.0f);
@@ -374,28 +433,32 @@ void RouteEditor::stop_test() {
   if (state_ != RouteEditorState::Testing) return;
   state_ = RouteEditorState::Editing;
   status_ = "Route test stopped";
+  display_steering_ = 0.0f;
   show(spin_, 0.0f);
 }
 
 void RouteEditor::update(float elapsed_seconds) {
-  if (state_ != RouteEditorState::Testing || test_index_ >= points_.size()) return;
-  const auto& target = points_[test_index_];
+  if (state_ != RouteEditorState::Testing || test_index_ >= test_points_.size()) return;
+  const auto& target = test_points_[test_index_];
   const float dx = target.x - current_.x;
   const float dz = target.z - current_.z;
   const float distance = std::sqrt(dx * dx + dz * dz);
   if (distance <= 0.05f) {
-    current_ = target;
+    current_.x = target.x;
+    current_.y = target.y;
+    current_.z = target.z;
     ++test_index_;
-    if (test_index_ >= points_.size()) {
+    if (test_index_ >= test_points_.size()) {
       state_ = RouteEditorState::Editing;
       status_ = "Route test complete";
+      display_steering_ = 0.0f;
       show(spin_, 0.0f);
     }
     return;
   }
   const float desired_heading = normalize_heading(std::atan2(dx, -dz) * 180.0f / pi);
   const float delta = heading_delta(current_.heading, desired_heading);
-  const float turn_step = std::clamp(delta, -45.0f * elapsed_seconds, 45.0f * elapsed_seconds);
+  const float turn_step = std::clamp(delta, -60.0f * elapsed_seconds, 60.0f * elapsed_seconds);
   current_.heading = normalize_heading(current_.heading + turn_step);
   const float step = std::min(distance, speed_mps_ * elapsed_seconds);
   current_.x += dx / distance * step;
@@ -403,7 +466,10 @@ void RouteEditor::update(float elapsed_seconds) {
   current_.y += (target.y - current_.y) * (step / distance);
   spin_ += step / 3.0f;
   spin_ -= std::floor(spin_);
-  show(spin_, std::clamp(delta / 35.0f, -1.0f, 1.0f));
+  const float target_steering = std::clamp(delta / 35.0f, -1.0f, 1.0f);
+  const float steering_blend = 1.0f - std::exp(-5.0f * elapsed_seconds);
+  display_steering_ += (target_steering - display_steering_) * steering_blend;
+  show(spin_, display_steering_);
 }
 
 bool RouteEditor::save() {
