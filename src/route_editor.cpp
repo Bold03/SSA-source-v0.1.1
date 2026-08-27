@@ -7,6 +7,12 @@
 #include <filesystem>
 #include <fstream>
 #include <stdexcept>
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
 
 namespace fs = std::filesystem;
 using json = nlohmann::json;
@@ -33,6 +39,7 @@ void RouteEditor::unload() {
   object_ = nullptr;
   probe_ = nullptr;
   planner_window_ = nullptr;
+  planner_drag_active_ = false;
   points_.clear();
   test_points_.clear();
   return_to_planner_after_test_ = false;
@@ -138,6 +145,7 @@ void RouteEditor::begin_planner(double latitude, double longitude, float heading
 
 void RouteEditor::open_planner() {
   if (!instance_ || points_.empty()) return;
+  build_smooth_test_path();
   int left{}, top{}, right{}, bottom{};
   XPLMGetScreenBoundsGlobal(&left, &top, &right, &bottom);
   if (!planner_window_) {
@@ -169,14 +177,13 @@ void RouteEditor::open_planner() {
   planner_active_ = true;
   state_ = RouteEditorState::Planning;
   status_ = "Planner active: click ground to add GPS markers";
-  XPLMTakeKeyboardFocus(planner_window_);
-  XPLMControlCamera(xplm_ControlCameraUntilViewChanges, camera_control, this);
+  XPLMControlCamera(xplm_ControlCameraForever, camera_control, this);
 }
 
 void RouteEditor::close_planner() {
   if (!planner_active_) return;
   planner_active_ = false;
-  XPLMTakeKeyboardFocus(nullptr);
+  planner_drag_active_ = false;
   if (planner_window_) XPLMSetWindowIsVisible(planner_window_, 0);
   XPLMDontControlCamera();
   if (state_ == RouteEditorState::Planning) state_ = RouteEditorState::Editing;
@@ -213,7 +220,7 @@ void RouteEditor::draw_planner() {
   float title_color[] = {0.25f, 0.95f, 0.65f};
   float marker_color[] = {1.0f, 0.72f, 0.20f};
   float route_color[] = {0.55f, 1.0f, 0.70f};
-  char title[] = "SSA ROUTE PLANNER | CLICK: ADD GPS POINT | ARROW KEYS: PAN | WHEEL: ZOOM";
+  char title[] = "SSA ROUTE PLANNER | CLICK: ADD GPS POINT | SHIFT+MMB / D-PAD: PAN | WHEEL: ZOOM";
   XPLMDrawString(title_color, left + 24, top - 30, title, nullptr,
                  xplmFont_Proportional);
   auto draw_button = [&](int button_left, int button_top, int button_right,
@@ -230,6 +237,11 @@ void RouteEditor::draw_planner() {
   draw_button(right - 140, top - 124, right - 104, top - 152, "<");
   draw_button(right - 100, top - 124, right - 64, top - 152, "v");
   draw_button(right - 60, top - 124, right - 24, top - 152, ">");
+  char curve_label[32];
+  std::snprintf(curve_label, sizeof(curve_label), "CURVE SMOOTH: %d", smoothing_iterations_);
+  draw_button(right - 180, top - 180, right - 24, top - 212, curve_label);
+  draw_button(right - 180, top - 220, right - 110, top - 252, "CURVE -");
+  draw_button(right - 94, top - 220, right - 24, top - 252, "CURVE +");
   const float width = static_cast<float>(std::max(1, right - left));
   const float height = static_cast<float>(std::max(1, top - bottom));
   const float half_width_m = planner_half_width();
@@ -240,17 +252,19 @@ void RouteEditor::draw_planner() {
     sy = static_cast<int>(bottom + height * 0.5f -
                           (point.z - planner_center_z_) / half_height_m * height * 0.5f);
   };
-  for (size_t i = 1; i < points_.size(); ++i) {
-    int x1{}, y1{}, x2{}, y2{};
-    screen(points_[i - 1], x1, y1);
-    screen(points_[i], x2, y2);
-    const int dots = std::max(1, static_cast<int>(std::hypot(x2 - x1, y2 - y1) / 18.0));
-    for (int dot = 1; dot < dots; ++dot) {
-      const float ratio = static_cast<float>(dot) / static_cast<float>(dots);
-      char point[] = ".";
-      XPLMDrawString(route_color, static_cast<int>(x1 + (x2 - x1) * ratio),
-                     static_cast<int>(y1 + (y2 - y1) * ratio), point, nullptr,
-                     xplmFont_Proportional);
+  const auto& route_line = test_points_.size() > 1 ? test_points_ : points_;
+  if (!route_line.empty()) {
+    int last_x{}, last_y{};
+    screen(route_line.front(), last_x, last_y);
+    for (size_t i = 1; i < route_line.size(); ++i) {
+      int x{}, y{};
+      screen(route_line[i], x, y);
+      if (std::hypot(x - last_x, y - last_y) >= 10.0) {
+        char point[] = ".";
+        XPLMDrawString(route_color, x, y, point, nullptr, xplmFont_Proportional);
+        last_x = x;
+        last_y = y;
+      }
     }
   }
   for (size_t i = 0; i < points_.size(); ++i) {
@@ -304,6 +318,12 @@ int RouteEditor::planner_mouse(int x, int y, XPLMMouseStatus status) {
     planner_center_x_ += pan_step;
     return 1;
   }
+  if (y >= top - 252 && y <= top - 220) {
+    if (x >= right - 180 && x <= right - 110) adjust_curve(-1);
+    else if (x >= right - 94 && x <= right - 24) adjust_curve(1);
+    return 1;
+  }
+  if (x >= right - 190 && y <= top - 170 && y >= top - 260) return 1;
   // Keep the title/toolbar band from accidentally creating a waypoint.
   if (y > top - 90) return 1;
   const float width = static_cast<float>(std::max(1, right - left));
@@ -355,6 +375,41 @@ float RouteEditor::planner_half_width() const {
   return planner_height_m_ * std::tan(field_of_view * pi / 360.0f);
 }
 
+void RouteEditor::update_planner_drag() {
+#ifdef _WIN32
+  if (!planner_active_) {
+    planner_drag_active_ = false;
+    return;
+  }
+  const bool dragging = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0 &&
+                        (GetAsyncKeyState(VK_MBUTTON) & 0x8000) != 0;
+  int mouse_x{}, mouse_y{};
+  XPLMGetMouseLocationGlobal(&mouse_x, &mouse_y);
+  if (!dragging) {
+    planner_drag_active_ = false;
+    return;
+  }
+  if (!planner_drag_active_) {
+    planner_drag_active_ = true;
+    planner_drag_x_ = mouse_x;
+    planner_drag_y_ = mouse_y;
+    return;
+  }
+  int left{}, top{}, right{}, bottom{};
+  XPLMGetWindowGeometry(planner_window_, &left, &top, &right, &bottom);
+  const float width = static_cast<float>(std::max(1, right - left));
+  const float height = static_cast<float>(std::max(1, top - bottom));
+  const float metres_per_x = planner_half_width() * 2.0f / width;
+  const float metres_per_y = planner_half_width() * 2.0f * height / width / height;
+  planner_center_x_ -= (mouse_x - planner_drag_x_) * metres_per_x;
+  planner_center_z_ += (mouse_y - planner_drag_y_) * metres_per_y;
+  planner_drag_x_ = mouse_x;
+  planner_drag_y_ = mouse_y;
+#else
+  planner_drag_active_ = false;
+#endif
+}
+
 void RouteEditor::add_point_at(float x, float z) {
   if (state_ != RouteEditorState::Planning) return;
   RoutePoint point{x, terrain_y(x, z, current_.y), z, current_.heading};
@@ -364,6 +419,7 @@ void RouteEditor::add_point_at(float x, float z) {
                                                   -(point.z - previous.z)) * 180.0f / pi);
   }
   points_.push_back(point);
+  build_smooth_test_path();
   current_ = point;
   status_ = "GPS waypoint " + std::to_string(points_.size()) + " added";
   show(spin_, 0.0f);
@@ -399,6 +455,7 @@ void RouteEditor::undo_point() {
   if ((state_ != RouteEditorState::Editing && state_ != RouteEditorState::Planning) ||
       points_.size() <= 1) return;
   points_.pop_back();
+  build_smooth_test_path();
   current_ = points_.back();
   status_ = "Last waypoint removed";
   show(spin_, 0.0f);
@@ -484,16 +541,29 @@ void RouteEditor::start_test() {
   show(spin_, 0.0f);
 }
 
+void RouteEditor::adjust_curve(int delta) {
+  if (state_ != RouteEditorState::Planning && state_ != RouteEditorState::Editing) return;
+  smoothing_iterations_ = std::clamp(smoothing_iterations_ + delta, 0, 4);
+  build_smooth_test_path();
+  status_ = "Curve smoothing set to " + std::to_string(smoothing_iterations_);
+}
+
 void RouteEditor::stop_test() {
   if (state_ != RouteEditorState::Testing) return;
+  const bool resume_planner = return_to_planner_after_test_;
   state_ = RouteEditorState::Editing;
   status_ = "Route test stopped";
   return_to_planner_after_test_ = false;
   display_steering_ = 0.0f;
   show(spin_, 0.0f);
+  if (resume_planner) {
+    open_planner();
+    status_ = "Route test stopped; planner resumed";
+  }
 }
 
 void RouteEditor::update(float elapsed_seconds) {
+  update_planner_drag();
   if (state_ != RouteEditorState::Testing || test_index_ >= test_points_.size()) return;
   const auto& target = test_points_[test_index_];
   const float dx = target.x - current_.x;
@@ -517,18 +587,21 @@ void RouteEditor::update(float elapsed_seconds) {
     }
     return;
   }
-  const float desired_heading = normalize_heading(std::atan2(dx, -dz) * 180.0f / pi);
+  const float desired_heading = target.heading;
   const float delta = heading_delta(current_.heading, desired_heading);
   const float turn_step = std::clamp(delta, -90.0f * elapsed_seconds, 90.0f * elapsed_seconds);
   current_.heading = normalize_heading(current_.heading + turn_step);
-  const float corner_speed = std::clamp(1.0f - std::abs(delta) / 100.0f, 0.35f, 1.0f);
+  const size_t lookahead_index = std::min(test_index_ + 6, test_points_.size() - 1);
+  const float route_curve = heading_delta(target.heading, test_points_[lookahead_index].heading);
+  const float corner_speed = std::clamp(1.0f - std::abs(route_curve) / 80.0f, 0.40f, 1.0f);
   const float step = std::min(distance, speed_mps_ * corner_speed * elapsed_seconds);
   current_.x += dx / distance * step;
   current_.z += dz / distance * step;
   current_.y += (target.y - current_.y) * (step / distance);
   spin_ += step / 3.0f;
   spin_ -= std::floor(spin_);
-  const float target_steering = std::clamp(delta / 35.0f, -1.0f, 1.0f);
+  float target_steering = std::clamp(route_curve / 28.0f, -1.0f, 1.0f);
+  if (std::abs(route_curve) < 0.8f) target_steering = 0.0f;
   const float steering_blend = 1.0f - std::exp(-6.0f * elapsed_seconds);
   display_steering_ += (target_steering - display_steering_) * steering_blend;
   show(spin_, display_steering_);
@@ -544,7 +617,8 @@ bool RouteEditor::save() {
     route["schema"] = 1;
     route["routes"] = json::array();
     json item = {{"id", "bus_route_01"}, {"label", "Apron Bus Route 01"},
-                 {"model", model_id_}, {"loop", true}, {"speed_mps", speed_mps_}};
+                 {"model", model_id_}, {"loop", true}, {"speed_mps", speed_mps_},
+                 {"curve_smoothing", smoothing_iterations_}};
     item["waypoints"] = json::array();
     for (const auto& point : points_) {
       double latitude{}, longitude{}, altitude{};

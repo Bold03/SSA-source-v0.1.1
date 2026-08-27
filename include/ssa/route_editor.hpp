@@ -35,6 +35,7 @@ public:
   void undo_point();
   void start_test();
   void stop_test();
+  void adjust_curve(int delta);
   void cancel();
   bool save();
 
@@ -49,6 +50,7 @@ private:
   void show(float spin, float steering);
   void add_point_at(float x, float z);
   void build_smooth_test_path();
+  void update_planner_drag();
   void open_planner();
   void close_planner();
   void draw_planner();
@@ -83,6 +85,9 @@ private:
   float planner_center_y_{};
   float planner_center_z_{};
   bool planner_active_{};
+  bool planner_drag_active_{};
+  int planner_drag_x_{};
+  int planner_drag_y_{};
   bool return_to_planner_after_test_{};
   size_t test_index_{};
   RoutePoint current_{};

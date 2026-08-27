@@ -28,8 +28,9 @@ boldstudio31/ssa/vehicle/steering    (-1..0..1, no loop)
 
 In X-Plane, open the SSA tablet, enable Developer Mode under Settings and open
 the DEV tab. Start the top-down planner at the aircraft, click the apron to add
-numbered GPS waypoints, use the arrow keys or on-screen direction pad to pan and
-the mouse wheel to zoom, then test or save from the boxed overlay toolbar. After
+numbered GPS waypoints, use Shift + middle-mouse drag on Windows or the on-screen
+direction pad to pan and the mouse wheel to zoom, then test or save from the boxed
+overlay toolbar. The CURVE control previews smoothing levels 0 to 4. After
 a test finishes, SSA returns to the same planning view. `steering_multiplier` reverses
 an OBJ whose front-wheel animation faces the wrong direction. Route testing uses
 `smoothing_iterations` (0 to 4) to round waypoint corners. SSA writes
