@@ -1,6 +1,15 @@
 {
   "schema": 1,
   "airport": "WIHH",
+  "vehicle_models": [
+    {
+      "id": "gapura_bus",
+      "label": "Gapura Apron Bus",
+      "object": "object/Gapura_bus.obj",
+      "ground_offset_m": 0.445,
+      "speed_mps": 4.0
+    }
+  ],
   "objects": [
     {
       "id": "hangar_squadron_01",

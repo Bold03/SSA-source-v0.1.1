@@ -1,14 +1,14 @@
 # SSA — Scenery Service Animation
 
 **Developer:** BoldStudio31  
-**Status:** staged jetway docking and vehicle animation test beta 0.8.3  
+**Status:** staged jetway docking and in-game vehicle route editor beta 0.9.0  
 **Targets:** X-Plane 11.50+ and X-Plane 12; Windows, Linux and macOS
 
 SSA is a standalone animation controller for scenery objects. It provides custom
 datarefs for hangars, jetways, moving vehicles, ground staff and parking
 displays. It does not depend on SAM or AutoGate.
 
-## Implemented through 0.8.3
+## Implemented through 0.9.0
 
 - Dynamic custom datarefs loaded from each scenery package's `ssa.json`.
 - Smooth open/close animation with configurable speed.
@@ -19,12 +19,17 @@ displays. It does not depend on SAM or AutoGate.
   coordinates, object diagnostics and the in-game Moving Car Route Editor area.
 - The optional `boldstudio31/ssa/developer/toggle` command remains available
   for scenery authors who want a keyboard shortcut.
-- Developer Mode includes a static bus-animation test panel. It drives
-  `boldstudio31/ssa/vehicle/wheel_spin` continuously and provides LEFT,
-  CENTER and RIGHT controls for `boldstudio31/ssa/vehicle/steering`.
+- Developer Mode includes a Moving Car Route Editor that loads the configured
+  OBJ as an X-Plane instance without requiring a Blender curve.
 - Float datarefs support configurable ranges, allowing vehicle steering to use
   the natural `-1` (left), `0` (center), `1` (right) convention while existing
   hangar and jetway animations remain normalized to `0..1`.
+- Route editing includes 2 m forward/back steps, 15 degree left/right turns,
+  waypoint add/undo, test, cancel and JSON save controls.
+- Vehicle instances follow terrain height with a configurable model ground
+  offset. Route tests drive wheel spin and front steering automatically.
+- Saved waypoints use latitude/longitude rather than transient X-Plane local
+  coordinates and are written to the scenery's `ssa_routes.json`.
 - Nearby hangar list (2 km) and small jetway activation radius (35 m).
 - Per-channel automatic jetway targets calculated from aircraft position,
   heading, door profile and scenery-configured movement limits.

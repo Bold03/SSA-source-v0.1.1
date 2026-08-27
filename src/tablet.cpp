@@ -11,12 +11,13 @@ void label(int x, int y, const char* text, float r = 0.90f, float g = 0.95f, flo
 }
 }
 
-Tablet::Tablet(SceneryManager& scenery, std::function<void()> toggle_auto,
+Tablet::Tablet(SceneryManager& scenery, RouteEditor& route_editor,
+               std::function<void()> toggle_auto,
                std::function<void()> reload_config,
                std::function<void(ServiceObject&)> toggle_object,
                std::function<void()> toggle_vehicle_spin,
                std::function<void(float)> set_vehicle_steering)
-    : scenery_(scenery), toggle_auto_(std::move(toggle_auto)),
+    : scenery_(scenery), route_editor_(route_editor), toggle_auto_(std::move(toggle_auto)),
       reload_config_(std::move(reload_config)), toggle_object_(std::move(toggle_object)),
       toggle_vehicle_spin_(std::move(toggle_vehicle_spin)),
       set_vehicle_steering_(std::move(set_vehicle_steering)) {
@@ -43,7 +44,11 @@ void Tablet::toggle_developer_mode() {
                                  ? "SSA - Scenery Service Animation [DEVELOPER]"
                                  : "SSA - Scenery Service Animation");
 }
-void Tablet::set_position(double latitude, double longitude) { latitude_ = latitude; longitude_ = longitude; }
+void Tablet::set_position(double latitude, double longitude, float heading) {
+  latitude_ = latitude;
+  longitude_ = longitude;
+  heading_ = heading;
+}
 void Tablet::draw(XPLMWindowID, void* refcon) { static_cast<Tablet*>(refcon)->draw_impl(); }
 int Tablet::mouse(XPLMWindowID, int x, int y, XPLMMouseStatus status, void* refcon) {
   return static_cast<Tablet*>(refcon)->mouse_impl(x, y, status);
@@ -81,22 +86,36 @@ void Tablet::draw_impl() {
   }
 
   if (tab_ == 4 && developer_mode_) {
-    label(l + 22, t - 105, "DEVELOPER TOOLS  |  BUS ANIMATION TEST", 1.0f, 0.72f, 0.20f);
-    label(l + 22, t - 140,
-          vehicle_spinning_ ? "Wheel spin: RUNNING   [ STOP ]"
-                            : "Wheel spin: STOPPED   [ START ]");
-    char steering[120];
-    std::snprintf(steering, sizeof(steering), "Steering value: %+.1f", vehicle_steering_);
-    label(l + 22, t - 175, steering);
-    label(l + 22, t - 210, "[ LEFT ]     [ CENTER ]     [ RIGHT ]",
-          0.25f, 0.95f, 0.65f);
-    char coords[180];
-    std::snprintf(coords, sizeof(coords), "Aircraft position: %.8f, %.8f", latitude_, longitude_);
-    label(l + 22, t - 250, coords, 0.75f, 0.85f, 0.95f);
-    char objects[120];
-    std::snprintf(objects, sizeof(objects), "Loaded SSA objects: %zu", scenery_.objects().size());
-    label(l + 22, t - 280, objects, 0.75f, 0.85f, 0.95f);
-    label(l + 340, t - 280, "[ RELOAD CONFIG ]", 0.25f, 0.95f, 0.65f);
+    label(l + 22, t - 105, "DEVELOPER TOOLS  |  MOVING CAR ROUTE EDITOR", 1.0f, 0.72f, 0.20f);
+    const auto editor_state = route_editor_.state();
+    if (editor_state == RouteEditorState::Unavailable) {
+      label(l + 22, t - 145, route_editor_.status().c_str(), 1.0f, 0.45f, 0.35f);
+      label(l + 22, t - 190, "Add vehicle_models to ssa.json, then reload.");
+    } else if (editor_state == RouteEditorState::Idle) {
+      label(l + 22, t - 145, route_editor_.status().c_str());
+      label(l + 22, t - 190, "[ CREATE ROUTE AT AIRCRAFT ]", 0.25f, 0.95f, 0.65f);
+      label(l + 22, t - 230, "The first waypoint is added automatically.", 0.75f, 0.85f, 0.95f);
+    } else if (editor_state == RouteEditorState::Editing) {
+      char route_info[180];
+      std::snprintf(route_info, sizeof(route_info), "Waypoints: %zu  |  Heading: %.0f deg",
+                    route_editor_.point_count(), route_editor_.heading());
+      label(l + 22, t - 135, route_info);
+      label(l + 22, t - 170, "[ LEFT 15 ]    [ FORWARD 2 M ]    [ RIGHT 15 ]",
+            0.25f, 0.95f, 0.65f);
+      label(l + 22, t - 205, "[ BACK 2 M ]   [ ADD POINT ]      [ UNDO ]",
+            0.25f, 0.95f, 0.65f);
+      label(l + 22, t - 240, "[ TEST ROUTE ] [ SAVE ROUTE ]     [ CANCEL ]",
+            1.0f, 0.72f, 0.20f);
+      label(l + 22, t - 275, route_editor_.status().c_str(), 0.75f, 0.85f, 0.95f);
+    } else {
+      char testing[160];
+      std::snprintf(testing, sizeof(testing), "TESTING ROUTE  |  Waypoints: %zu",
+                    route_editor_.point_count());
+      label(l + 22, t - 150, testing, 1.0f, 0.72f, 0.20f);
+      label(l + 22, t - 195, "[ STOP TEST ]", 0.25f, 0.95f, 0.65f);
+      label(l + 22, t - 235, route_editor_.status().c_str());
+    }
+    label(l + 340, t - 300, "[ RELOAD CONFIG ]", 0.25f, 0.95f, 0.65f);
     label(l + 22, b + 42,
           realops_detected_ ? "Developer Mode | RealOps compatibility active"
                             : "Developer Mode | RealOps not detected",
@@ -168,7 +187,7 @@ int Tablet::mouse_impl(int x, int y, XPLMMouseStatus status) {
     toggle_developer_mode();
     return 1;
   }
-  if (developer_mode_ && tab_ == 4 && y < t - 260 && y > t - 305 && x > l + 315) {
+  if (developer_mode_ && tab_ == 4 && y < t - 280 && y > t - 325 && x > l + 315) {
     reload_config_();
     return 1;
   }
@@ -187,12 +206,26 @@ int Tablet::mouse_impl(int x, int y, XPLMMouseStatus status) {
     return 1;
   }
   if (tab_ == 4) {
-    if (y < t - 115 && y > t - 155) {
-      toggle_vehicle_spin_();
-    } else if (y < t - 185 && y > t - 225) {
-      if (x < l + 125) set_vehicle_steering_(-1.0f);
-      else if (x < l + 280) set_vehicle_steering_(0.0f);
-      else set_vehicle_steering_(1.0f);
+    const auto editor_state = route_editor_.state();
+    if (editor_state == RouteEditorState::Idle && y < t - 165 && y > t - 210) {
+      route_editor_.create_route(latitude_, longitude_, heading_);
+    } else if (editor_state == RouteEditorState::Editing) {
+      if (y < t - 145 && y > t - 185) {
+        if (x < l + 145) route_editor_.turn(-15.0f);
+        else if (x < l + 340) route_editor_.move(2.0f);
+        else route_editor_.turn(15.0f);
+      } else if (y < t - 185 && y > t - 220) {
+        if (x < l + 145) route_editor_.move(-2.0f);
+        else if (x < l + 340) route_editor_.add_point();
+        else route_editor_.undo_point();
+      } else if (y < t - 220 && y > t - 255) {
+        if (x < l + 155) route_editor_.start_test();
+        else if (x < l + 355) route_editor_.save();
+        else route_editor_.cancel();
+      }
+    } else if (editor_state == RouteEditorState::Testing &&
+               y < t - 170 && y > t - 215) {
+      route_editor_.stop_test();
     }
     return 1;
   }

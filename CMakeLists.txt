@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(SSA VERSION 0.8.3 LANGUAGES CXX)
+project(SSA VERSION 0.9.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -18,6 +18,7 @@ add_library(SSA SHARED
   src/datarefs.cpp
   src/scenery.cpp
   src/tablet.cpp
+  src/route_editor.cpp
 )
 
 target_include_directories(SSA PRIVATE
