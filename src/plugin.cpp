@@ -28,6 +28,7 @@ XPLMCommandRef hangar_close_command{};
 XPLMCommandRef jetway_toggle_command{};
 XPLMCommandRef jetway_connect_command{};
 XPLMCommandRef jetway_disconnect_command{};
+XPLMCommandRef developer_mode_command{};
 XPLMMenuID menu{};
 bool realops_detected{};
 float compatibility_timer{};
@@ -313,6 +314,11 @@ int command_handler(XPLMCommandRef, XPLMCommandPhase phase, void*) {
   return 1;
 }
 
+int developer_mode_handler(XPLMCommandRef, XPLMCommandPhase phase, void*) {
+  if (phase == xplm_CommandBegin && tablet) tablet->toggle_developer_mode();
+  return 1;
+}
+
 void reload_scenery() {
   if (!scenery) return;
   char root[2048]{};
@@ -419,6 +425,8 @@ void menu_handler(void*, void* item_ref) {
     control_nearest_hangar(action_toggle);
   } else if (item_ref == reinterpret_cast<void*>(4)) {
     control_nearest_jetway(action_toggle);
+  } else if (item_ref == reinterpret_cast<void*>(5)) {
+    if (tablet) tablet->toggle_developer_mode();
   }
 }
 
@@ -507,17 +515,20 @@ PLUGIN_API int XPluginStart(char* name, char* signature, char* description) {
     jetway_toggle_command = XPLMCreateCommand("boldstudio31/ssa/jetway/nearest_toggle", "Toggle nearest SSA jetway");
     jetway_connect_command = XPLMCreateCommand("boldstudio31/ssa/jetway/nearest_connect", "Connect nearest SSA jetway");
     jetway_disconnect_command = XPLMCreateCommand("boldstudio31/ssa/jetway/nearest_disconnect", "Disconnect nearest SSA jetway");
+    developer_mode_command = XPLMCreateCommand("boldstudio31/ssa/developer/toggle", "Toggle SSA Developer Mode");
     XPLMRegisterCommandHandler(jetway_toggle_command, jetway_handler, 1, &action_toggle);
     XPLMRegisterCommandHandler(jetway_connect_command, jetway_handler, 1, &action_open);
     XPLMRegisterCommandHandler(jetway_disconnect_command, jetway_handler, 1, &action_close);
+    XPLMRegisterCommandHandler(developer_mode_command, developer_mode_handler, 1, nullptr);
     const int parent = XPLMAppendMenuItem(XPLMFindPluginsMenu(), "SSA", nullptr, 0);
     menu = XPLMCreateMenu("SSA", XPLMFindPluginsMenu(), parent, menu_handler, nullptr);
     XPLMAppendMenuItem(menu, "Open tablet", reinterpret_cast<void*>(1), 0);
     XPLMAppendMenuItem(menu, "Reload scenery configuration", reinterpret_cast<void*>(2), 0);
     XPLMAppendMenuItem(menu, "Toggle nearest hangar", reinterpret_cast<void*>(3), 0);
     XPLMAppendMenuItem(menu, "Toggle nearest jetway", reinterpret_cast<void*>(4), 0);
+    XPLMAppendMenuItem(menu, "Developer Mode", reinterpret_cast<void*>(5), 0);
     XPLMRegisterFlightLoopCallback(flight_loop, 0.05f, nullptr);
-    log("SSA 0.7.3 started: " + std::to_string(scenery->objects().size()) +
+    log("SSA 0.8.0 started: " + std::to_string(scenery->objects().size()) +
         " object(s), L1 door dataref " + (door_open_ref ? "detected" : "not found"));
     return 1;
   } catch (const std::exception& e) {
@@ -536,6 +547,7 @@ PLUGIN_API void XPluginStop() {
   if (jetway_toggle_command) XPLMUnregisterCommandHandler(jetway_toggle_command, jetway_handler, 1, &action_toggle);
   if (jetway_connect_command) XPLMUnregisterCommandHandler(jetway_connect_command, jetway_handler, 1, &action_open);
   if (jetway_disconnect_command) XPLMUnregisterCommandHandler(jetway_disconnect_command, jetway_handler, 1, &action_close);
+  if (developer_mode_command) XPLMUnregisterCommandHandler(developer_mode_command, developer_mode_handler, 1, nullptr);
   if (menu) XPLMDestroyMenu(menu);
   tablet.reset();
   scenery.reset();

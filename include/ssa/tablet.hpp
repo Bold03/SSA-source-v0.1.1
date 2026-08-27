@@ -14,6 +14,8 @@ public:
   ~Tablet();
   void toggle();
   bool visible() const;
+  void toggle_developer_mode();
+  bool developer_mode() const { return developer_mode_; }
   void set_position(double latitude, double longitude);
   void set_auto(bool enabled) { automatic_ = enabled; }
   void set_realops(bool detected) { realops_detected_ = detected; }
@@ -32,6 +34,7 @@ private:
   double longitude_{};
   bool automatic_{};
   bool realops_detected_{};
+  bool developer_mode_{};
   int tab_{};
 };
 
