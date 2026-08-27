@@ -18,7 +18,7 @@ Tablet::Tablet(SceneryManager& scenery, std::function<void()> toggle_auto,
       reload_config_(std::move(reload_config)), toggle_object_(std::move(toggle_object)) {
   XPLMCreateWindow_t params{};
   params.structSize = sizeof(params);
-  params.left = 100; params.top = 700; params.right = 470; params.bottom = 220;
+  params.left = 100; params.top = 700; params.right = 620; params.bottom = 220;
   params.visible = 0;
   params.drawWindowFunc = draw;
   params.handleMouseClickFunc = mouse;
@@ -34,7 +34,7 @@ void Tablet::toggle() { XPLMSetWindowIsVisible(window_, visible() ? 0 : 1); }
 bool Tablet::visible() const { return window_ && XPLMGetWindowIsVisible(window_) != 0; }
 void Tablet::toggle_developer_mode() {
   developer_mode_ = !developer_mode_;
-  if (!developer_mode_ && tab_ == 3) tab_ = 0;
+  if (!developer_mode_ && tab_ == 4) tab_ = 3;
   XPLMSetWindowTitle(window_, developer_mode_
                                  ? "SSA - Scenery Service Animation [DEVELOPER]"
                                  : "SSA - Scenery Service Animation");
@@ -49,13 +49,34 @@ void Tablet::draw_impl() {
   int l, t, r, b;
   XPLMGetWindowGeometry(window_, &l, &t, &r, &b);
   label(l + 22, t - 35, "BOLDSTUDIO31  |  SSA", 0.25f, 0.95f, 0.65f);
-  const char* tabs = "[ HANGAR ]   JETWAY   BUS";
-  if (tab_ == 1) tabs = "HANGAR   [ JETWAY ]   BUS";
-  else if (tab_ == 2) tabs = "HANGAR   JETWAY   [ BUS ]";
-  else if (tab_ == 3) tabs = "HANGAR   JETWAY   BUS   [ DEV ]";
+  const char* tabs = "[ HANGAR ]   JETWAY   BUS   SETTINGS";
+  if (tab_ == 1) tabs = "HANGAR   [ JETWAY ]   BUS   SETTINGS";
+  else if (tab_ == 2) tabs = "HANGAR   JETWAY   [ BUS ]   SETTINGS";
+  else if (tab_ == 3) tabs = developer_mode_
+      ? "HANGAR   JETWAY   BUS   [ SETTINGS ]   DEV"
+      : "HANGAR   JETWAY   BUS   [ SETTINGS ]";
+  else if (tab_ == 4) tabs = "HANGAR   JETWAY   BUS   SETTINGS   [ DEV ]";
   label(l + 22, t - 70, tabs);
 
-  if (tab_ == 3 && developer_mode_) {
+  if (tab_ == 3) {
+    label(l + 22, t - 105, "SETTINGS", 0.25f, 0.95f, 0.65f);
+    label(l + 22, t - 145,
+          automatic_ ? "Automatic jetway: ON   [ TOGGLE ]"
+                     : "Automatic jetway: OFF  [ TOGGLE ]");
+    label(l + 22, t - 185,
+          developer_mode_ ? "Developer Mode: ON   [ DISABLE ]"
+                          : "Developer Mode: OFF  [ ENABLE ]",
+          developer_mode_ ? 1.0f : 0.75f, developer_mode_ ? 0.72f : 0.85f,
+          developer_mode_ ? 0.20f : 0.95f);
+    label(l + 22, t - 220,
+          "Developer Mode shows scenery-authoring tools and the Route Editor.",
+          0.75f, 0.85f, 0.95f);
+    label(l + 22, t - 265, "[ RELOAD CONFIG ]", 0.25f, 0.95f, 0.65f);
+    label(l + 22, b + 42, "SSA SETTINGS", 0.55f, 0.85f, 0.75f);
+    return;
+  }
+
+  if (tab_ == 4 && developer_mode_) {
     label(l + 22, t - 105, "DEVELOPER TOOLS  |  Moving Car Route Editor", 1.0f, 0.72f, 0.20f);
     char coords[180];
     std::snprintf(coords, sizeof(coords), "Aircraft position: %.8f, %.8f", latitude_, longitude_);
@@ -128,29 +149,36 @@ void Tablet::draw_impl() {
     label(l + 26, y, line);
   }
   if (list.empty()) label(l + 26, y, "No SSA object found in range.", 1.0f, 0.65f, 0.35f);
-  label(l + 22, b + 42, "PLAYER MODE  |  Developer tools hidden", 0.55f, 0.85f, 0.75f);
+  label(l + 22, b + 42, "SSA READY", 0.55f, 0.85f, 0.75f);
 }
 
 int Tablet::mouse_impl(int x, int y, XPLMMouseStatus status) {
   if (status != xplm_MouseDown) return 1;
   int l, t, r, b;
   XPLMGetWindowGeometry(window_, &l, &t, &r, &b);
-  if (developer_mode_ && tab_ == 3 && y > b + 5 && y < b + 38 && x > r - 130) {
+  if (developer_mode_ && tab_ == 4 && y > b + 5 && y < b + 38 && x > r - 130) {
     toggle_developer_mode();
     return 1;
   }
-  if (developer_mode_ && tab_ == 3 && y < t - 275 && y > t - 325) {
+  if (developer_mode_ && tab_ == 4 && y < t - 275 && y > t - 325) {
     reload_config_();
     return 1;
   }
   if (y < t - 45 && y > t - 85) {
-    if (developer_mode_ && x > l + 275) tab_ = 3;
-    else if (x < l + 105) tab_ = 0;
+    if (developer_mode_ && x > l + 415) tab_ = 4;
+    else if (x < l + 115) tab_ = 0;
     else if (x < l + 225) tab_ = 1;
-    else tab_ = 2;
+    else if (x < l + 300) tab_ = 2;
+    else tab_ = 3;
     return 1;
   }
-  if (tab_ == 3) return 1;
+  if (tab_ == 3) {
+    if (y < t - 120 && y > t - 165) toggle_auto_();
+    else if (y < t - 165 && y > t - 205) toggle_developer_mode();
+    else if (y < t - 235 && y > t - 285) reload_config_();
+    return 1;
+  }
+  if (tab_ == 4) return 1;
   if (tab_ == 1 && y < t - 85 && y > t - 145) { toggle_auto_(); return 1; }
   const int index = (t - 145 - y) / 34;
   const ServiceType list_type = tab_ == 0 ? ServiceType::Hangar

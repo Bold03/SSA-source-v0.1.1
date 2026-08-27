@@ -425,8 +425,6 @@ void menu_handler(void*, void* item_ref) {
     control_nearest_hangar(action_toggle);
   } else if (item_ref == reinterpret_cast<void*>(4)) {
     control_nearest_jetway(action_toggle);
-  } else if (item_ref == reinterpret_cast<void*>(5)) {
-    if (tablet) tablet->toggle_developer_mode();
   }
 }
 
@@ -526,9 +524,8 @@ PLUGIN_API int XPluginStart(char* name, char* signature, char* description) {
     XPLMAppendMenuItem(menu, "Reload scenery configuration", reinterpret_cast<void*>(2), 0);
     XPLMAppendMenuItem(menu, "Toggle nearest hangar", reinterpret_cast<void*>(3), 0);
     XPLMAppendMenuItem(menu, "Toggle nearest jetway", reinterpret_cast<void*>(4), 0);
-    XPLMAppendMenuItem(menu, "Developer Mode", reinterpret_cast<void*>(5), 0);
     XPLMRegisterFlightLoopCallback(flight_loop, 0.05f, nullptr);
-    log("SSA 0.8.0 started: " + std::to_string(scenery->objects().size()) +
+    log("SSA 0.8.2 started: " + std::to_string(scenery->objects().size()) +
         " object(s), L1 door dataref " + (door_open_ref ? "detected" : "not found"));
     return 1;
   } catch (const std::exception& e) {
