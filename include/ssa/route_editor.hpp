@@ -77,6 +77,8 @@ private:
   float speed_mps_{4.0f};
   float heading_offset_deg_{180.0f};
   float steering_multiplier_{-1.0f};
+  float body_lookahead_m_{4.0f};
+  float body_heading_response_{2.2f};
   int smoothing_iterations_{3};
   float spin_{};
   float display_steering_{};

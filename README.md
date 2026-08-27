@@ -1,14 +1,14 @@
 # SSA — Scenery Service Animation
 
 **Developer:** BoldStudio31  
-**Status:** top-down vehicle route planner beta 0.9.4  
+**Status:** top-down vehicle route planner beta 0.9.5  
 **Targets:** X-Plane 11.50+ and X-Plane 12; Windows, Linux and macOS
 
 SSA is a standalone animation controller for scenery objects. It provides custom
 datarefs for hangars, jetways, moving vehicles, ground staff and parking
 displays. It does not depend on SAM or AutoGate.
 
-## Implemented through 0.9.4
+## Implemented through 0.9.5
 
 - Dynamic custom datarefs loaded from each scenery package's `ssa.json`.
 - Smooth open/close animation with configurable speed.
@@ -48,6 +48,9 @@ displays. It does not depend on SAM or AutoGate.
 - Front-wheel steering follows route curvature with look-ahead and a straight-line
   dead zone, preventing left/right oscillation. Stopping a planner test returns
   directly to the retained top-down Create Route view.
+- Bus body heading uses a multi-metre forward target and centred path tangents,
+  then applies damped rotation plus a heading dead zone. This filters small
+  alternating segment angles without removing genuine turns.
 - Per-model heading offsets correct OBJ forward-axis differences without
   re-exporting Blender; the Gapura bus profile uses 180 degrees.
 - Nearby hangar list (2 km) and small jetway activation radius (35 m).

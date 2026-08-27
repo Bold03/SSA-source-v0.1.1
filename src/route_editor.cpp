@@ -69,6 +69,9 @@ bool RouteEditor::load(const std::string& xplane_root) {
       speed_mps_ = std::clamp(model.value("speed_mps", 4.0f), 0.5f, 15.0f);
       heading_offset_deg_ = model.value("heading_offset_deg", 180.0f);
       steering_multiplier_ = model.value("steering_multiplier", -1.0f);
+      body_lookahead_m_ = std::clamp(model.value("body_lookahead_m", 4.0f), 1.0f, 12.0f);
+      body_heading_response_ =
+          std::clamp(model.value("body_heading_response", 2.2f), 0.5f, 8.0f);
       smoothing_iterations_ = std::clamp(model.value("smoothing_iterations", 3), 0, 4);
       scenery_directory_ = entry.path().string();
       route_path_ = (entry.path() / "ssa_routes.json").string();
@@ -510,13 +513,15 @@ void RouteEditor::build_smooth_test_path() {
     }
     test_points_ = std::move(dense);
   }
-  for (size_t i = 0; i + 1 < test_points_.size(); ++i) {
-    const float dx = test_points_[i + 1].x - test_points_[i].x;
-    const float dz = test_points_[i + 1].z - test_points_[i].z;
+  const size_t tangent_span = std::max<size_t>(2, static_cast<size_t>(
+      std::lround(body_lookahead_m_ / 0.8f)));
+  for (size_t i = 0; i < test_points_.size(); ++i) {
+    const size_t behind = i > tangent_span ? i - tangent_span : 0;
+    const size_t ahead = std::min(i + tangent_span, test_points_.size() - 1);
+    const float dx = test_points_[ahead].x - test_points_[behind].x;
+    const float dz = test_points_[ahead].z - test_points_[behind].z;
     test_points_[i].heading = normalize_heading(std::atan2(dx, -dz) * 180.0f / pi);
   }
-  if (test_points_.size() > 1)
-    test_points_.back().heading = test_points_[test_points_.size() - 2].heading;
 }
 
 void RouteEditor::start_test() {
@@ -587,12 +592,27 @@ void RouteEditor::update(float elapsed_seconds) {
     }
     return;
   }
-  const float desired_heading = target.heading;
-  const float delta = heading_delta(current_.heading, desired_heading);
-  const float turn_step = std::clamp(delta, -90.0f * elapsed_seconds, 90.0f * elapsed_seconds);
+  size_t body_lookahead_index = test_index_;
+  float lookahead_distance = 0.0f;
+  while (body_lookahead_index + 1 < test_points_.size() &&
+         lookahead_distance < body_lookahead_m_) {
+    const auto& a = test_points_[body_lookahead_index];
+    const auto& b = test_points_[body_lookahead_index + 1];
+    lookahead_distance += std::hypot(b.x - a.x, b.z - a.z);
+    ++body_lookahead_index;
+  }
+  const auto& body_target = test_points_[body_lookahead_index];
+  const float body_dx = body_target.x - current_.x;
+  const float body_dz = body_target.z - current_.z;
+  const float desired_heading = normalize_heading(std::atan2(body_dx, -body_dz) * 180.0f / pi);
+  float delta = heading_delta(current_.heading, desired_heading);
+  if (std::abs(delta) < 0.25f) delta = 0.0f;
+  const float heading_blend = 1.0f - std::exp(-body_heading_response_ * elapsed_seconds);
+  const float turn_step = std::clamp(delta * heading_blend,
+                                     -35.0f * elapsed_seconds,
+                                     35.0f * elapsed_seconds);
   current_.heading = normalize_heading(current_.heading + turn_step);
-  const size_t lookahead_index = std::min(test_index_ + 6, test_points_.size() - 1);
-  const float route_curve = heading_delta(target.heading, test_points_[lookahead_index].heading);
+  const float route_curve = heading_delta(target.heading, body_target.heading);
   const float corner_speed = std::clamp(1.0f - std::abs(route_curve) / 80.0f, 0.40f, 1.0f);
   const float step = std::min(distance, speed_mps_ * corner_speed * elapsed_seconds);
   current_.x += dx / distance * step;
