@@ -105,6 +105,14 @@ bool RouteEditor::load(const std::string& xplane_root) {
       wheelbase_m_ = std::clamp(model.value("wheelbase_m", 7.6f), 1.0f, 15.0f);
       max_steering_deg_ =
           std::clamp(model.value("max_steering_deg", 35.0f), 10.0f, 60.0f);
+      collision_enabled_ = model.value("collision_enabled", true);
+      collision_detection_m_ = std::clamp(
+          model.value("collision_detection_m", 40.0f), 10.0f, 120.0f);
+      collision_stop_distance_m_ = std::clamp(
+          model.value("collision_stop_distance_m", 13.0f), 3.0f,
+          collision_detection_m_ - 1.0f);
+      collision_lane_half_width_m_ = std::clamp(
+          model.value("collision_lane_half_width_m", 3.5f), 1.0f, 10.0f);
       scenery_directory_ = entry.path().string();
       route_path_ = (entry.path() / "ssa_routes.json").string();
       const fs::path object_path = entry.path() / model.at("object").get<std::string>();
@@ -863,6 +871,7 @@ void RouteEditor::start_saved_route(size_t index) {
   route.current_speed_mps = 0.0f;
   route.spin = 0.0f;
   route.steering = 0.0f;
+  route.traffic_blocked = false;
   route.running = true;
   show_instance(route.instance, route.current, route.spin, route.steering);
   status_ = "Running: " + route.label;
@@ -874,8 +883,45 @@ void RouteEditor::stop_saved_route(size_t index) {
   route.running = false;
   route.current_speed_mps = 0.0f;
   route.steering = 0.0f;
+  route.traffic_blocked = false;
   show_instance(route.instance, route.current, route.spin, 0.0f);
   status_ = "Stopped: " + route.label;
+}
+
+float RouteEditor::traffic_speed_limit(const TrafficRoute& route) const {
+  if (!collision_enabled_) return route.cruise_speed_mps;
+
+  const float heading = route.current.heading * pi / 180.0f;
+  const float forward_x = std::sin(heading);
+  const float forward_z = -std::cos(heading);
+  float speed_limit = route.cruise_speed_mps;
+
+  for (const auto& other : traffic_routes_) {
+    if (&other == &route || !other.instance) continue;
+    const float dx = other.current.x - route.current.x;
+    const float dz = other.current.z - route.current.z;
+    const float distance = std::hypot(dx, dz);
+
+    // Routes can share a spawn point. Give the first loaded bus priority so
+    // the remaining buses wait instead of spawning inside one another forever.
+    if (distance < 0.5f) {
+      if (&route > &other) speed_limit = 0.0f;
+      continue;
+    }
+    if (distance > collision_detection_m_) continue;
+
+    const float longitudinal = dx * forward_x + dz * forward_z;
+    const float lateral = std::abs(dx * forward_z - dz * forward_x);
+    if (longitudinal <= 0.0f || lateral > collision_lane_half_width_m_) continue;
+
+    const float free_distance = std::max(
+        0.0f, longitudinal - collision_stop_distance_m_);
+    const float other_speed = other.running ? other.current_speed_mps : 0.0f;
+    const float safe_speed = std::sqrt(
+        other_speed * other_speed + 2.0f * braking_mps2_ * free_distance);
+    speed_limit = std::min(speed_limit, safe_speed);
+  }
+  return speed_limit;
 }
 
 void RouteEditor::start_all_saved_routes() {
@@ -958,6 +1004,9 @@ void RouteEditor::update_traffic_route(TrafficRoute& route, float elapsed_second
     const float remaining = distance + route.distance_remaining[route.path_index];
     target_speed = std::min(target_speed, std::sqrt(2.0f * braking_mps2_ * remaining));
   }
+  const float collision_limit = traffic_speed_limit(route);
+  target_speed = std::min(target_speed, collision_limit);
+  route.traffic_blocked = collision_enabled_ && collision_limit < 0.15f;
   route.current_speed_mps += std::clamp(
       target_speed - route.current_speed_mps,
       -braking_mps2_ * elapsed_seconds,
@@ -973,6 +1022,7 @@ void RouteEditor::update_traffic_route(TrafficRoute& route, float elapsed_second
         route.running = false;
         route.current_speed_mps = 0.0f;
         route.steering = 0.0f;
+        route.traffic_blocked = false;
         status_ = "Route complete: " + route.label;
         show_instance(route.instance, route.current, route.spin, 0.0f);
         return;

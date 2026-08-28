@@ -36,6 +36,7 @@ struct TrafficRoute {
   float current_speed_mps{};
   float spin{};
   float steering{};
+  bool traffic_blocked{};
   size_t path_index{1};
   RoutePoint current{};
   std::vector<RoutePoint> anchors;
@@ -93,6 +94,7 @@ private:
                          std::vector<RoutePoint>& path,
                          std::vector<float>& distance_remaining);
   void update_traffic_route(TrafficRoute& route, float elapsed_seconds);
+  float traffic_speed_limit(const TrafficRoute& route) const;
   float adaptive_speed(float base_speed, float route_length) const;
   float upcoming_turn_degrees(const std::vector<RoutePoint>& path, size_t index,
                               bool loop, float preview_distance) const;
@@ -140,6 +142,10 @@ private:
   float rear_axle_to_origin_m_{3.8f};
   float wheelbase_m_{7.6f};
   float max_steering_deg_{35.0f};
+  bool collision_enabled_{true};
+  float collision_detection_m_{40.0f};
+  float collision_stop_distance_m_{13.0f};
+  float collision_lane_half_width_m_{3.5f};
   float spin_{};
   float current_speed_mps_{};
   float display_steering_{};

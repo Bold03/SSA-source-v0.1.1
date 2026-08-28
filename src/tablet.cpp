@@ -158,9 +158,12 @@ void Tablet::draw_impl() {
       for (size_t i = 0; i < shown; ++i, route_y -= 44) {
         const auto* route = route_editor_.saved_route(i);
         if (!route) continue;
+        const char* traffic_state = route->traffic_blocked
+                                        ? "WAITING"
+                                        : route->running ? "RUNNING" : "STOPPED";
         char route_line[180];
         std::snprintf(route_line, sizeof(route_line), "%zu. %.15s | %s | %s | %.0f km/h",
-                      i + 1, route->label.c_str(), route->running ? "RUNNING" : "STOPPED",
+                      i + 1, route->label.c_str(), traffic_state,
                       route->loop ? "LOOP" : "ONE WAY", route->cruise_speed_mps * 3.6f);
         label(l + 22, route_y, route_line);
         button(r - 142, route_y + 12, r - 86, route_y - 16, "START");

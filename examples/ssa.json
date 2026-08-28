@@ -23,7 +23,11 @@
       "corner_min_speed_mps": 2.2,
       "corner_full_slowdown_deg": 35.0,
       "acceleration_mps2": 1.5,
-      "braking_mps2": 2.5
+      "braking_mps2": 2.5,
+      "collision_enabled": true,
+      "collision_detection_m": 40.0,
+      "collision_stop_distance_m": 13.0,
+      "collision_lane_half_width_m": 3.5
     }
   ],
   "objects": [
