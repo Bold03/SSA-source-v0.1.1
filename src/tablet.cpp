@@ -140,8 +140,29 @@ void Tablet::draw_impl() {
     label(l + 22, t - 105, automatic_ ? "Automatic jetway: ON" : "Automatic jetway: OFF");
     label(l + 22, t - 130, "Turboprop: 0 | Narrow: 1 | Wide: by forward doors");
   } else if (tab_ == 2) {
-    label(l + 22, t - 105, "Apron buses nearby:");
-    label(l + 22, t - 130, "Select a bus to start or stop its assigned route.");
+    label(l + 22, t - 105, "APRON BUS ROUTES", 0.25f, 0.95f, 0.65f);
+    if (!route_editor_.saved_route_available()) {
+      label(l + 22, t - 150, "No saved bus route found.", 1.0f, 0.65f, 0.35f);
+      label(l + 22, t - 185, "A scenery developer must create and save a route first.",
+            0.75f, 0.85f, 0.95f);
+    } else {
+      char route_line[200];
+      std::snprintf(route_line, sizeof(route_line), "%s  |  %s",
+                    route_editor_.saved_route_label().c_str(),
+                    route_editor_.saved_route_running() ? "RUNNING" : "STOPPED");
+      label(l + 22, t - 150, route_line);
+      char model_line[200];
+      std::snprintf(model_line, sizeof(model_line), "Model: %s  |  Loop: %s",
+                    route_editor_.model_label().c_str(),
+                    route_editor_.saved_route_loop() ? "ON" : "OFF");
+      label(l + 22, t - 180, model_line, 0.75f, 0.85f, 0.95f);
+      button(l + 22, t - 205, l + 225, t - 245, "START BUS");
+      button(l + 245, t - 205, l + 448, t - 245, "STOP BUS",
+             1.0f, 0.72f, 0.20f);
+      label(l + 22, t - 280, route_editor_.status().c_str(), 0.75f, 0.85f, 0.95f);
+    }
+    label(l + 22, b + 42, "PLAYER MODE | SAVED ROUTE", 0.55f, 0.85f, 0.75f);
+    return;
   } else {
     label(l + 22, t - 105, "Nearby hangars (maximum 2 km):");
   }
@@ -247,6 +268,13 @@ int Tablet::mouse_impl(int x, int y, XPLMMouseStatus status) {
     return 1;
   }
   if (tab_ == 1 && y < t - 85 && y > t - 145) { toggle_auto_(); return 1; }
+  if (tab_ == 2) {
+    if (y <= t - 205 && y >= t - 245) {
+      if (x >= l + 22 && x <= l + 225) route_editor_.start_saved_route();
+      else if (x >= l + 245 && x <= l + 448) route_editor_.stop_saved_route();
+    }
+    return 1;
+  }
   const int index = (t - 145 - y) / 34;
   const ServiceType list_type = tab_ == 0 ? ServiceType::Hangar
                                            : tab_ == 1 ? ServiceType::Jetway

@@ -45,6 +45,12 @@ returns to the same planning view. `steering_multiplier` reverses an OBJ whose
 front-wheel animation faces the wrong direction. SSA writes `ssa_routes.json`
 beside the scenery's `ssa.json`.
 
+After SAVE, reload SSA or restart X-Plane. The normal Player Mode BUS tab reads
+`ssa_routes.json`, places the bus at the first anchor and provides START BUS and
+STOP BUS controls. Developer Mode is not required for route playback. A closed
+route continues running when LOOP is ON; an open route brakes and stops at its
+final anchor.
+
 `body_lookahead_m` controls how far ahead the bus looks when choosing its body
 heading; a longer distance suppresses small left/right corrections. The
 `body_heading_response` value controls how quickly the body rotates toward that

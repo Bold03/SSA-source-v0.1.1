@@ -41,6 +41,8 @@ public:
   void start_test();
   void stop_test();
   void toggle_loop();
+  void start_saved_route();
+  void stop_saved_route();
   void cancel();
   bool save();
 
@@ -50,11 +52,16 @@ public:
   size_t point_count() const { return points_.size(); }
   float heading() const { return current_.heading; }
   bool loop_enabled() const { return loop_enabled_; }
+  bool saved_route_available() const { return saved_route_available_; }
+  bool saved_route_running() const { return runtime_playback_; }
+  bool saved_route_loop() const { return saved_loop_enabled_; }
+  const std::string& saved_route_label() const { return saved_route_label_; }
 
 private:
   float terrain_y(float x, float z, float fallback) const;
   void show(float spin, float steering);
   void add_point_at(float x, float z);
+  bool load_saved_route();
   void build_bezier_path();
   void update_planner_drag();
   void open_planner();
@@ -107,9 +114,14 @@ private:
   int planner_drag_y_{};
   bool return_to_planner_after_test_{};
   bool loop_enabled_{};
+  bool saved_route_available_{};
+  bool saved_loop_enabled_{};
+  bool runtime_playback_{};
+  std::string saved_route_label_{"No saved route"};
   size_t test_index_{};
   RoutePoint current_{};
   std::vector<RoutePoint> points_;
+  std::vector<RoutePoint> saved_points_;
   std::vector<RoutePoint> test_points_;
   std::vector<float> test_distance_remaining_;
   XPLMObjectRef object_{};

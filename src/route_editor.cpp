@@ -42,10 +42,15 @@ void RouteEditor::unload() {
   planner_drag_active_ = false;
   handle_drag_anchor_ = -1;
   points_.clear();
+  saved_points_.clear();
   test_points_.clear();
   test_distance_remaining_.clear();
   return_to_planner_after_test_ = false;
   loop_enabled_ = false;
+  saved_route_available_ = false;
+  saved_loop_enabled_ = false;
+  runtime_playback_ = false;
+  saved_route_label_ = "No saved route";
   current_speed_mps_ = 0.0f;
   state_ = RouteEditorState::Unavailable;
 }
@@ -102,7 +107,7 @@ bool RouteEditor::load(const std::string& xplane_root) {
         return false;
       }
       state_ = RouteEditorState::Idle;
-      status_ = "Ready: " + model_label_;
+      if (!load_saved_route()) status_ = "Ready: " + model_label_ + " | No saved route";
       return true;
     }
   } catch (const std::exception& e) {
@@ -111,6 +116,78 @@ bool RouteEditor::load(const std::string& xplane_root) {
   }
   status_ = "Add vehicle_models to ssa.json";
   return false;
+}
+
+bool RouteEditor::load_saved_route() {
+  saved_points_.clear();
+  saved_route_available_ = false;
+  saved_loop_enabled_ = false;
+  runtime_playback_ = false;
+  if (route_path_.empty() || !fs::exists(route_path_)) return false;
+  try {
+    std::ifstream input(route_path_);
+    const json root = json::parse(input);
+    if (!root.contains("routes") || !root.at("routes").is_array() ||
+        root.at("routes").empty()) return false;
+    const auto& route = root.at("routes").front();
+    if (route.value("model", model_id_) != model_id_ ||
+        !route.contains("waypoints") || !route.at("waypoints").is_array()) return false;
+    for (const auto& waypoint : route.at("waypoints")) {
+      if (!waypoint.contains("latitude") || !waypoint.contains("longitude")) continue;
+      double x{}, y{}, z{};
+      XPLMWorldToLocal(waypoint.at("latitude").get<double>(),
+                       waypoint.at("longitude").get<double>(), 0.0, &x, &y, &z);
+      RoutePoint point{static_cast<float>(x),
+                       terrain_y(static_cast<float>(x), static_cast<float>(z),
+                                 static_cast<float>(y)),
+                       static_cast<float>(z),
+                       normalize_heading(waypoint.value("heading", 0.0f))};
+      if (waypoint.value("handle_mode", std::string("auto")) == "aligned" &&
+          waypoint.contains("handle_in_latitude") &&
+          waypoint.contains("handle_in_longitude") &&
+          waypoint.contains("handle_out_latitude") &&
+          waypoint.contains("handle_out_longitude")) {
+        double in_x{}, in_y{}, in_z{}, out_x{}, out_y{}, out_z{};
+        XPLMWorldToLocal(waypoint.at("handle_in_latitude").get<double>(),
+                         waypoint.at("handle_in_longitude").get<double>(), 0.0,
+                         &in_x, &in_y, &in_z);
+        XPLMWorldToLocal(waypoint.at("handle_out_latitude").get<double>(),
+                         waypoint.at("handle_out_longitude").get<double>(), 0.0,
+                         &out_x, &out_y, &out_z);
+        point.handle_in_x = static_cast<float>(in_x - x);
+        point.handle_in_z = static_cast<float>(in_z - z);
+        point.handle_out_x = static_cast<float>(out_x - x);
+        point.handle_out_z = static_cast<float>(out_z - z);
+        point.custom_handles = true;
+      }
+      saved_points_.push_back(point);
+    }
+    if (saved_points_.size() < 2) {
+      saved_points_.clear();
+      return false;
+    }
+    saved_route_label_ = route.value("label", std::string("Apron Bus Route 01"));
+    saved_loop_enabled_ = route.value("loop", false);
+    speed_mps_ = std::clamp(route.value("speed_mps", speed_mps_), 0.5f, 15.0f);
+    saved_route_available_ = true;
+    points_ = saved_points_;
+    loop_enabled_ = saved_loop_enabled_;
+    build_bezier_path();
+    current_ = test_points_.empty() ? saved_points_.front() : test_points_.front();
+    spin_ = 0.0f;
+    display_steering_ = 0.0f;
+    show(spin_, 0.0f);
+    points_.clear();
+    test_points_.clear();
+    test_distance_remaining_.clear();
+    loop_enabled_ = false;
+    status_ = "Loaded route: " + saved_route_label_;
+    return true;
+  } catch (const std::exception& e) {
+    status_ = std::string("Route load failed: ") + e.what();
+    saved_points_.clear();
+    return false;
+  }
 }
 
 float RouteEditor::terrain_y(float x, float z, float fallback) const {
@@ -683,6 +760,32 @@ void RouteEditor::start_test() {
   show(spin_, 0.0f);
 }
 
+void RouteEditor::start_saved_route() {
+  if (!saved_route_available_ || saved_points_.size() < 2 ||
+      state_ == RouteEditorState::Planning) {
+    status_ = "No saved bus route available";
+    return;
+  }
+  if (runtime_playback_) return;
+  points_ = saved_points_;
+  loop_enabled_ = saved_loop_enabled_;
+  state_ = RouteEditorState::Editing;
+  return_to_planner_after_test_ = false;
+  runtime_playback_ = true;
+  start_test();
+  if (state_ != RouteEditorState::Testing) {
+    runtime_playback_ = false;
+    state_ = RouteEditorState::Idle;
+    return;
+  }
+  status_ = "Running: " + saved_route_label_;
+}
+
+void RouteEditor::stop_saved_route() {
+  if (!runtime_playback_) return;
+  stop_test();
+}
+
 void RouteEditor::toggle_loop() {
   if (state_ != RouteEditorState::Planning && state_ != RouteEditorState::Editing) return;
   loop_enabled_ = !loop_enabled_;
@@ -693,12 +796,20 @@ void RouteEditor::toggle_loop() {
 void RouteEditor::stop_test() {
   if (state_ != RouteEditorState::Testing) return;
   const bool resume_planner = return_to_planner_after_test_;
-  state_ = RouteEditorState::Editing;
-  status_ = "Route test stopped";
+  const bool stopped_runtime = runtime_playback_;
+  runtime_playback_ = false;
+  state_ = stopped_runtime ? RouteEditorState::Idle : RouteEditorState::Editing;
+  status_ = stopped_runtime ? "Stopped: " + saved_route_label_ : "Route test stopped";
   return_to_planner_after_test_ = false;
   display_steering_ = 0.0f;
   current_speed_mps_ = 0.0f;
   show(spin_, 0.0f);
+  if (stopped_runtime) {
+    points_.clear();
+    test_points_.clear();
+    test_distance_remaining_.clear();
+    loop_enabled_ = false;
+  }
   if (resume_planner) {
     open_planner();
     status_ = "Route test stopped; planner resumed";
@@ -764,8 +875,11 @@ void RouteEditor::update(float elapsed_seconds) {
       } else {
         current_speed_mps_ = 0.0f;
         display_steering_ = 0.0f;
-        state_ = RouteEditorState::Editing;
-        status_ = "Route test complete";
+        const bool completed_runtime = runtime_playback_;
+        runtime_playback_ = false;
+        state_ = completed_runtime ? RouteEditorState::Idle : RouteEditorState::Editing;
+        status_ = completed_runtime ? "Route complete: " + saved_route_label_
+                                    : "Route test complete";
         show(spin_, 0.0f);
         if (return_to_planner_after_test_) {
           return_to_planner_after_test_ = false;
@@ -857,6 +971,10 @@ bool RouteEditor::save() {
     std::ofstream output(route_path_);
     output << route.dump(2) << '\n';
     if (!output) throw std::runtime_error("Cannot write route file");
+    saved_points_ = points_;
+    saved_loop_enabled_ = loop_enabled_;
+    saved_route_label_ = "Apron Bus Route 01";
+    saved_route_available_ = true;
     status_ = "Saved: ssa_routes.json";
     return true;
   } catch (const std::exception& e) {
@@ -873,6 +991,7 @@ void RouteEditor::cancel() {
   test_distance_remaining_.clear();
   return_to_planner_after_test_ = false;
   loop_enabled_ = false;
+  runtime_playback_ = false;
   handle_drag_anchor_ = -1;
   current_speed_mps_ = 0.0f;
   state_ = RouteEditorState::Idle;
