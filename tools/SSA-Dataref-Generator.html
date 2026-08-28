@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>SSA Dataref Generator</title>
+  <style>
+    :root { color-scheme: dark; --green:#45efaa; --panel:#18231f; --line:#355248; }
+    * { box-sizing:border-box; }
+    body { margin:0; min-height:100vh; display:grid; place-items:center; padding:24px;
+      font:15px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;
+      color:#eaf8f2; background:#0c1210; }
+    main { width:min(680px,100%); padding:30px; border:1px solid var(--line);
+      border-radius:18px; background:var(--panel); box-shadow:0 24px 70px #0008; }
+    h1 { margin:0; color:var(--green); font-size:26px; }
+    .lead { margin:7px 0 25px; color:#a9c6bb; }
+    label { display:block; margin:17px 0 7px; font-weight:700; }
+    input[type=text] { width:100%; padding:13px 14px; border:1px solid var(--line);
+      border-radius:10px; outline:none; color:#fff; background:#0d1512; }
+    input[type=text]:focus { border-color:var(--green); box-shadow:0 0 0 3px #45efaa20; }
+    .picker { display:flex; gap:10px; }
+    .picker input[type=text] { flex:1; }
+    button,.pick { min-height:44px; padding:11px 16px; border:1px solid var(--line);
+      border-radius:10px; cursor:pointer; font-weight:800; color:#07130e;
+      background:var(--green); text-align:center; white-space:nowrap; }
+    .pick input { display:none; }
+    .result { margin-top:25px; padding:18px; border:1px solid var(--line);
+      border-radius:13px; background:#0d1512; }
+    .result label { margin-top:0; color:#a9c6bb; }
+    .output { display:flex; gap:10px; }
+    .output input { font:14px ui-monospace,SFMono-Regular,Consolas,monospace; color:var(--green); }
+    .hint { margin:13px 0 0; color:#8eaaa0; font-size:13px; }
+    #status { min-height:22px; margin-top:10px; color:var(--green); }
+    @media(max-width:560px) { main{padding:20px}.picker,.output{display:grid}.pick,button{width:100%} }
+  </style>
+</head>
+<body>
+<main>
+  <h1>SSA Dataref Generator</h1>
+  <p class="lead">Create a consistent X-Plane animation dataref without typing the path manually.</p>
+
+  <label for="scenery">Scenery folder</label>
+  <div class="picker">
+    <input id="scenery" type="text" placeholder="Example: Test_SSA" autocomplete="off">
+    <label class="pick">SELECT FOLDER<input id="folderPicker" type="file" webkitdirectory directory multiple></label>
+  </div>
+
+  <label for="objectName">OBJ object</label>
+  <div class="picker">
+    <input id="objectName" type="text" placeholder="Example: Gapura_bus.obj" autocomplete="off">
+    <label class="pick">SELECT OBJ<input id="objectPicker" type="file" accept=".obj"></label>
+  </div>
+
+  <label for="channel">Animation channel <span style="color:#8eaaa0;font-weight:400">(optional)</span></label>
+  <input id="channel" type="text" placeholder="Example: door, state, wheel_spin" autocomplete="off">
+
+  <section class="result">
+    <label for="result">Generated dataref</label>
+    <div class="output">
+      <input id="result" type="text" readonly value="boldstudio31/ssa/animation/...">
+      <button id="copy" type="button">COPY</button>
+    </div>
+    <div id="status" role="status"></div>
+    <p class="hint">Use this exact same dataref in XPlane2Blender and <code>ssa.json</code>. Spaces and symbols are converted to underscores automatically.</p>
+  </section>
+</main>
+<script>
+  const $ = id => document.getElementById(id);
+  const scenery = $('scenery');
+  const objectName = $('objectName');
+  const channel = $('channel');
+  const result = $('result');
+  const status = $('status');
+
+  function lastPart(value) {
+    return String(value || '').trim().replace(/[\\/]+$/, '').split(/[\\/]/).pop() || '';
+  }
+  function safePart(value, removeObj = false) {
+    let text = lastPart(value);
+    if (removeObj) text = text.replace(/\.obj$/i, '');
+    return text.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  }
+  function update() {
+    const folder = safePart(scenery.value);
+    const object = safePart(objectName.value, true);
+    const extra = safePart(channel.value);
+    const parts = ['boldstudio31', 'ssa', 'animation'];
+    if (folder) parts.push(folder);
+    if (object) parts.push(object);
+    if (extra) parts.push(extra);
+    result.value = parts.join('/') + ((!folder || !object) ? '/...' : '');
+    status.textContent = '';
+  }
+  [scenery, objectName, channel].forEach(input => input.addEventListener('input', update));
+  $('folderPicker').addEventListener('change', event => {
+    const file = event.target.files[0];
+    if (file) scenery.value = (file.webkitRelativePath || file.name).split('/')[0];
+    update();
+  });
+  $('objectPicker').addEventListener('change', event => {
+    const file = event.target.files[0];
+    if (file) objectName.value = file.name;
+    update();
+  });
+  $('copy').addEventListener('click', async () => {
+    if (!safePart(scenery.value) || !safePart(objectName.value, true)) {
+      status.textContent = 'Enter the scenery folder and OBJ name first.';
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(result.value);
+    } catch (_) {
+      result.focus(); result.select(); document.execCommand('copy');
+    }
+    status.textContent = 'Copied to clipboard.';
+  });
+  update();
+</script>
+</body>
+</html>

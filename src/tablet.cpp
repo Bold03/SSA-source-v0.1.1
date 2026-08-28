@@ -150,20 +150,27 @@ void Tablet::draw_impl() {
       label(l + 22, t - 185, "A scenery developer must create and save a route first.",
             0.75f, 0.85f, 0.95f);
     } else {
-      char route_line[200];
-      std::snprintf(route_line, sizeof(route_line), "%s  |  %s",
-                    route_editor_.saved_route_label().c_str(),
-                    route_editor_.saved_route_running() ? "RUNNING" : "STOPPED");
-      label(l + 22, t - 150, route_line);
-      char model_line[200];
-      std::snprintf(model_line, sizeof(model_line), "Model: %s  |  Loop: %s",
-                    route_editor_.model_label().c_str(),
-                    route_editor_.saved_route_loop() ? "ON" : "OFF");
-      label(l + 22, t - 180, model_line, 0.75f, 0.85f, 0.95f);
-      button(l + 22, t - 205, l + 225, t - 245, "START TRAFFIC");
-      button(l + 245, t - 205, l + 448, t - 245, "STOP TRAFFIC",
+      button(l + 22, t - 118, l + 180, t - 150, "START ALL");
+      button(l + 195, t - 118, l + 353, t - 150, "STOP ALL",
              1.0f, 0.72f, 0.20f);
-      label(l + 22, t - 280, route_editor_.status().c_str(), 0.75f, 0.85f, 0.95f);
+      int route_y = t - 185;
+      const size_t shown = std::min<size_t>(route_editor_.saved_route_count(), 5);
+      for (size_t i = 0; i < shown; ++i, route_y -= 44) {
+        const auto* route = route_editor_.saved_route(i);
+        if (!route) continue;
+        char route_line[180];
+        std::snprintf(route_line, sizeof(route_line), "%zu. %.22s | %s | %s",
+                      i + 1, route->label.c_str(), route->running ? "RUNNING" : "STOPPED",
+                      route->loop ? "LOOP" : "ONE WAY");
+        label(l + 22, route_y, route_line);
+        button(r - 142, route_y + 12, r - 86, route_y - 16, "START");
+        button(r - 78, route_y + 12, r - 22, route_y - 16, "STOP",
+               1.0f, 0.72f, 0.20f);
+      }
+      if (route_editor_.saved_route_count() > shown)
+        label(l + 22, route_y, "More routes are running; showing the first five.",
+              0.75f, 0.85f, 0.95f);
+      label(l + 22, b + 68, route_editor_.status().c_str(), 0.75f, 0.85f, 0.95f);
     }
     label(l + 22, b + 42, "DEVELOPER | BACKGROUND TRAFFIC", 0.55f, 0.85f, 0.75f);
     return;
@@ -279,9 +286,19 @@ int Tablet::mouse_impl(int x, int y, XPLMMouseStatus status) {
   }
   if (tab_ == 1 && y < t - 85 && y > t - 145) { toggle_auto_(); return 1; }
   if (tab_ == 2) {
-    if (y <= t - 205 && y >= t - 245) {
-      if (x >= l + 22 && x <= l + 225) route_editor_.start_saved_route();
-      else if (x >= l + 245 && x <= l + 448) route_editor_.stop_saved_route();
+    if (y <= t - 118 && y >= t - 150) {
+      if (x >= l + 22 && x <= l + 180) route_editor_.start_all_saved_routes();
+      else if (x >= l + 195 && x <= l + 353) route_editor_.stop_all_saved_routes();
+      return 1;
+    }
+    int route_y = t - 185;
+    const size_t shown = std::min<size_t>(route_editor_.saved_route_count(), 5);
+    for (size_t i = 0; i < shown; ++i, route_y -= 44) {
+      if (y <= route_y + 12 && y >= route_y - 16) {
+        if (x >= r - 142 && x <= r - 86) route_editor_.start_saved_route(i);
+        else if (x >= r - 78 && x <= r - 22) route_editor_.stop_saved_route(i);
+        return 1;
+      }
     }
     return 1;
   }

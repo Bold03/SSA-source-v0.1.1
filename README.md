@@ -1,14 +1,19 @@
 # SSA — Scenery Service Animation
 
 **Developer:** BoldStudio31  
-**Status:** automatic background bus traffic beta 0.12.2  
+**Status:** multi-route background bus traffic beta 0.13.0  
 **Targets:** X-Plane 11.50+ and X-Plane 12; Windows, Linux and macOS
 
 SSA is a standalone animation controller for scenery objects. It provides custom
 datarefs for hangars, jetways, moving vehicles, ground staff and parking
 displays. It does not depend on SAM or AutoGate.
 
-## Implemented through 0.12.2
+`tools/SSA-Dataref-Generator.html` is a standalone no-install helper for scenery
+developers. Open it in a browser, choose a scenery folder and OBJ, and copy the
+sanitized `boldstudio31/ssa/animation/scenery/object` dataref into both Blender
+and `ssa.json`.
+
+## Implemented through 0.13.0
 
 - Dynamic custom datarefs loaded from each scenery package's `ssa.json`.
 - Smooth open/close animation with configurable speed.
@@ -77,6 +82,16 @@ displays. It does not depend on SAM or AutoGate.
 - Saved-route coordinate conversion, terrain probing and instance placement are
   deferred to the flight loop after scenery initialization. No XPLM terrain or
   instance positioning calls are made from `XPluginStart`.
+- One scenery can store and run up to sixteen background bus routes using the
+  currently configured bus model. Every
+  route owns an independent X-Plane instance, path cursor, speed, steering,
+  wheel spin, LOOP and autostart state.
+- Saving a newly planned route appends the next available `bus_route_XX`
+  instead of overwriting existing routes. The route file schema is version 2
+  while version 1 single-route files remain loadable.
+- The TRAFFIC tab shows the first five route statuses with separate START and
+  STOP buttons, plus START ALL and STOP ALL controls. Additional routes still
+  run normally even when they do not fit in the compact tablet list.
 - Nearby hangar list (2 km) and small jetway activation radius (35 m).
 - Per-channel automatic jetway targets calculated from aircraft position,
   heading, door profile and scenery-configured movement limits.

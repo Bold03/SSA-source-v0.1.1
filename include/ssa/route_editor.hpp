@@ -24,6 +24,25 @@ struct RoutePoint {
   bool custom_handles{};
 };
 
+struct TrafficRoute {
+  std::string id;
+  std::string label;
+  std::string model;
+  bool loop{};
+  bool autostart{true};
+  bool running{};
+  float speed_mps{4.0f};
+  float current_speed_mps{};
+  float spin{};
+  float steering{};
+  size_t path_index{1};
+  RoutePoint current{};
+  std::vector<RoutePoint> anchors;
+  std::vector<RoutePoint> path;
+  std::vector<float> distance_remaining;
+  XPLMInstanceRef instance{};
+};
+
 class RouteEditor {
 public:
   RouteEditor() = default;
@@ -42,8 +61,10 @@ public:
   void start_test();
   void stop_test();
   void toggle_loop();
-  void start_saved_route();
-  void stop_saved_route();
+  void start_saved_route(size_t index);
+  void stop_saved_route(size_t index);
+  void start_all_saved_routes();
+  void stop_all_saved_routes();
   void cancel();
   bool save();
 
@@ -53,18 +74,24 @@ public:
   size_t point_count() const { return points_.size(); }
   float heading() const { return current_.heading; }
   bool loop_enabled() const { return loop_enabled_; }
-  bool saved_route_available() const { return saved_route_available_; }
-  bool saved_route_running() const { return runtime_playback_; }
-  bool saved_route_loop() const { return saved_loop_enabled_; }
-  bool saved_route_autostart() const { return saved_autostart_; }
-  const std::string& saved_route_label() const { return saved_route_label_; }
+  bool saved_route_available() const { return !traffic_routes_.empty(); }
+  size_t saved_route_count() const { return traffic_routes_.size(); }
+  const TrafficRoute* saved_route(size_t index) const {
+    return index < traffic_routes_.size() ? &traffic_routes_[index] : nullptr;
+  }
 
 private:
   float terrain_y(float x, float z, float fallback) const;
   void show(float spin, float steering);
+  void show_instance(XPLMInstanceRef instance, const RoutePoint& point,
+                     float spin, float steering);
   void add_point_at(float x, float z);
   bool load_saved_route();
   void build_bezier_path();
+  void build_bezier_path(const std::vector<RoutePoint>& anchors, bool loop,
+                         std::vector<RoutePoint>& path,
+                         std::vector<float>& distance_remaining);
+  void update_traffic_route(TrafficRoute& route, float elapsed_seconds);
   void update_planner_drag();
   void open_planner();
   void close_planner();
@@ -118,15 +145,12 @@ private:
   int planner_drag_y_{};
   bool return_to_planner_after_test_{};
   bool loop_enabled_{};
-  bool saved_route_available_{};
-  bool saved_loop_enabled_{};
-  bool saved_autostart_{true};
-  bool runtime_playback_{};
-  std::string saved_route_label_{"No saved route"};
+  std::string editing_route_id_;
+  std::string editing_route_label_;
   size_t test_index_{};
   RoutePoint current_{};
   std::vector<RoutePoint> points_;
-  std::vector<RoutePoint> saved_points_;
+  std::vector<TrafficRoute> traffic_routes_;
   std::vector<RoutePoint> test_points_;
   std::vector<float> test_distance_remaining_;
   XPLMObjectRef object_{};

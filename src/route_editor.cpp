@@ -33,6 +33,8 @@ void RouteEditor::unload() {
   if (planner_active_) close_planner();
   if (planner_window_) XPLMDestroyWindow(planner_window_);
   if (instance_) XPLMDestroyInstance(instance_);
+  for (auto& route : traffic_routes_)
+    if (route.instance) XPLMDestroyInstance(route.instance);
   if (object_) XPLMUnloadObject(object_);
   if (probe_) XPLMDestroyProbe(probe_);
   instance_ = nullptr;
@@ -44,16 +46,13 @@ void RouteEditor::unload() {
   route_load_delay_seconds_ = 0.0f;
   handle_drag_anchor_ = -1;
   points_.clear();
-  saved_points_.clear();
+  traffic_routes_.clear();
   test_points_.clear();
   test_distance_remaining_.clear();
   return_to_planner_after_test_ = false;
   loop_enabled_ = false;
-  saved_route_available_ = false;
-  saved_loop_enabled_ = false;
-  saved_autostart_ = true;
-  runtime_playback_ = false;
-  saved_route_label_ = "No saved route";
+  editing_route_id_.clear();
+  editing_route_label_.clear();
   current_speed_mps_ = 0.0f;
   state_ = RouteEditorState::Unavailable;
 }
@@ -129,75 +128,82 @@ void RouteEditor::schedule_saved_route_load() {
 }
 
 bool RouteEditor::load_saved_route() {
-  saved_points_.clear();
-  saved_route_available_ = false;
-  saved_loop_enabled_ = false;
-  saved_autostart_ = true;
-  runtime_playback_ = false;
+  for (auto& route : traffic_routes_)
+    if (route.instance) XPLMDestroyInstance(route.instance);
+  traffic_routes_.clear();
   if (route_path_.empty() || !fs::exists(route_path_)) return false;
   try {
     std::ifstream input(route_path_);
     const json root = json::parse(input);
     if (!root.contains("routes") || !root.at("routes").is_array() ||
         root.at("routes").empty()) return false;
-    const auto& route = root.at("routes").front();
-    if (route.value("model", model_id_) != model_id_ ||
-        !route.contains("waypoints") || !route.at("waypoints").is_array()) return false;
-    for (const auto& waypoint : route.at("waypoints")) {
-      if (!waypoint.contains("latitude") || !waypoint.contains("longitude")) continue;
-      double x{}, y{}, z{};
-      XPLMWorldToLocal(waypoint.at("latitude").get<double>(),
-                       waypoint.at("longitude").get<double>(), 0.0, &x, &y, &z);
-      RoutePoint point{static_cast<float>(x),
-                       terrain_y(static_cast<float>(x), static_cast<float>(z),
-                                 static_cast<float>(y)),
-                       static_cast<float>(z),
-                       normalize_heading(waypoint.value("heading", 0.0f))};
-      if (waypoint.value("handle_mode", std::string("auto")) == "aligned" &&
-          waypoint.contains("handle_in_latitude") &&
-          waypoint.contains("handle_in_longitude") &&
-          waypoint.contains("handle_out_latitude") &&
-          waypoint.contains("handle_out_longitude")) {
-        double in_x{}, in_y{}, in_z{}, out_x{}, out_y{}, out_z{};
-        XPLMWorldToLocal(waypoint.at("handle_in_latitude").get<double>(),
-                         waypoint.at("handle_in_longitude").get<double>(), 0.0,
-                         &in_x, &in_y, &in_z);
-        XPLMWorldToLocal(waypoint.at("handle_out_latitude").get<double>(),
-                         waypoint.at("handle_out_longitude").get<double>(), 0.0,
-                         &out_x, &out_y, &out_z);
-        point.handle_in_x = static_cast<float>(in_x - x);
-        point.handle_in_z = static_cast<float>(in_z - z);
-        point.handle_out_x = static_cast<float>(out_x - x);
-        point.handle_out_z = static_cast<float>(out_z - z);
-        point.custom_handles = true;
+    const char* datarefs[] = {"boldstudio31/ssa/vehicle/wheel_spin",
+                              "boldstudio31/ssa/vehicle/steering", nullptr};
+    size_t fallback_number = 1;
+    for (const auto& route_json : root.at("routes")) {
+      if (traffic_routes_.size() >= 16) break;
+      if (route_json.value("model", model_id_) != model_id_ ||
+          !route_json.contains("waypoints") ||
+          !route_json.at("waypoints").is_array()) continue;
+      TrafficRoute route;
+      char fallback_id[32];
+      std::snprintf(fallback_id, sizeof(fallback_id), "bus_route_%02zu", fallback_number);
+      route.id = route_json.value("id", std::string(fallback_id));
+      route.label = route_json.value(
+          "label", std::string("Apron Bus Route ") + std::to_string(fallback_number));
+      route.model = model_id_;
+      route.loop = route_json.value("loop", false);
+      route.autostart = route_json.value("autostart", true);
+      route.speed_mps = std::clamp(route_json.value("speed_mps", speed_mps_), 0.5f, 15.0f);
+      for (const auto& waypoint : route_json.at("waypoints")) {
+        if (!waypoint.contains("latitude") || !waypoint.contains("longitude")) continue;
+        double x{}, y{}, z{};
+        XPLMWorldToLocal(waypoint.at("latitude").get<double>(),
+                         waypoint.at("longitude").get<double>(), 0.0, &x, &y, &z);
+        RoutePoint point{static_cast<float>(x),
+                         terrain_y(static_cast<float>(x), static_cast<float>(z),
+                                   static_cast<float>(y)),
+                         static_cast<float>(z),
+                         normalize_heading(waypoint.value("heading", 0.0f))};
+        if (waypoint.value("handle_mode", std::string("auto")) == "aligned" &&
+            waypoint.contains("handle_in_latitude") &&
+            waypoint.contains("handle_in_longitude") &&
+            waypoint.contains("handle_out_latitude") &&
+            waypoint.contains("handle_out_longitude")) {
+          double in_x{}, in_y{}, in_z{}, out_x{}, out_y{}, out_z{};
+          XPLMWorldToLocal(waypoint.at("handle_in_latitude").get<double>(),
+                           waypoint.at("handle_in_longitude").get<double>(), 0.0,
+                           &in_x, &in_y, &in_z);
+          XPLMWorldToLocal(waypoint.at("handle_out_latitude").get<double>(),
+                           waypoint.at("handle_out_longitude").get<double>(), 0.0,
+                           &out_x, &out_y, &out_z);
+          point.handle_in_x = static_cast<float>(in_x - x);
+          point.handle_in_z = static_cast<float>(in_z - z);
+          point.handle_out_x = static_cast<float>(out_x - x);
+          point.handle_out_z = static_cast<float>(out_z - z);
+          point.custom_handles = true;
+        }
+        route.anchors.push_back(point);
       }
-      saved_points_.push_back(point);
+      if (route.anchors.size() < 2) continue;
+      build_bezier_path(route.anchors, route.loop, route.path, route.distance_remaining);
+      if (route.path.size() < 2) continue;
+      route.current = route.path.front();
+      route.instance = XPLMCreateInstance(object_, datarefs);
+      if (!route.instance) continue;
+      show_instance(route.instance, route.current, 0.0f, 0.0f);
+      traffic_routes_.push_back(std::move(route));
+      ++fallback_number;
     }
-    if (saved_points_.size() < 2) {
-      saved_points_.clear();
-      return false;
-    }
-    saved_route_label_ = route.value("label", std::string("Apron Bus Route 01"));
-    saved_loop_enabled_ = route.value("loop", false);
-    saved_autostart_ = route.value("autostart", true);
-    speed_mps_ = std::clamp(route.value("speed_mps", speed_mps_), 0.5f, 15.0f);
-    saved_route_available_ = true;
-    points_ = saved_points_;
-    loop_enabled_ = saved_loop_enabled_;
-    build_bezier_path();
-    current_ = test_points_.empty() ? saved_points_.front() : test_points_.front();
-    spin_ = 0.0f;
-    display_steering_ = 0.0f;
-    show(spin_, 0.0f);
-    points_.clear();
-    test_points_.clear();
-    test_distance_remaining_.clear();
-    loop_enabled_ = false;
-    status_ = "Loaded route: " + saved_route_label_;
-    return true;
+    status_ = traffic_routes_.empty()
+                  ? "No valid saved traffic routes"
+                  : "Loaded " + std::to_string(traffic_routes_.size()) + " traffic route(s)";
+    return !traffic_routes_.empty();
   } catch (const std::exception& e) {
     status_ = std::string("Route load failed: ") + e.what();
-    saved_points_.clear();
+    for (auto& route : traffic_routes_)
+      if (route.instance) XPLMDestroyInstance(route.instance);
+    traffic_routes_.clear();
     return false;
   }
 }
@@ -211,16 +217,21 @@ float RouteEditor::terrain_y(float x, float z, float fallback) const {
 }
 
 void RouteEditor::show(float spin, float steering) {
-  if (!instance_) return;
+  show_instance(instance_, current_, spin, steering);
+}
+
+void RouteEditor::show_instance(XPLMInstanceRef instance, const RoutePoint& point,
+                                float spin, float steering) {
+  if (!instance) return;
   XPLMDrawInfo_t draw{};
   draw.structSize = sizeof(draw);
-  const float physical_heading = current_.heading * pi / 180.0f;
-  draw.x = current_.x + std::sin(physical_heading) * rear_axle_to_origin_m_;
-  draw.y = current_.y;
-  draw.z = current_.z - std::cos(physical_heading) * rear_axle_to_origin_m_;
-  draw.heading = normalize_heading(current_.heading + heading_offset_deg_);
+  const float physical_heading = point.heading * pi / 180.0f;
+  draw.x = point.x + std::sin(physical_heading) * rear_axle_to_origin_m_;
+  draw.y = point.y;
+  draw.z = point.z - std::cos(physical_heading) * rear_axle_to_origin_m_;
+  draw.heading = normalize_heading(point.heading + heading_offset_deg_);
   const float data[] = {spin, std::clamp(steering * steering_multiplier_, -1.0f, 1.0f)};
-  XPLMInstanceSetPosition(instance_, &draw, data);
+  XPLMInstanceSetPosition(instance, &draw, data);
 }
 
 void RouteEditor::create_route(double latitude, double longitude, float heading) {
@@ -232,6 +243,21 @@ void RouteEditor::create_route(double latitude, double longitude, float heading)
               static_cast<float>(z), normalize_heading(heading)};
   points_.clear();
   points_.push_back(current_);
+  size_t route_number = 1;
+  for (;;) {
+    char route_id[32];
+    std::snprintf(route_id, sizeof(route_id), "bus_route_%02zu", route_number);
+    const bool used = std::any_of(traffic_routes_.begin(), traffic_routes_.end(),
+                                  [&](const TrafficRoute& route) {
+                                    return route.id == route_id;
+                                  });
+    if (!used) {
+      editing_route_id_ = route_id;
+      editing_route_label_ = "Apron Bus Route " + std::to_string(route_number);
+      break;
+    }
+    ++route_number;
+  }
   spin_ = 0.0f;
   state_ = RouteEditorState::Editing;
   status_ = "Route created; first point added";
@@ -672,25 +698,31 @@ float RouteEditor::heading_delta(float from, float to) {
 }
 
 void RouteEditor::build_bezier_path() {
-  test_points_.clear();
-  test_distance_remaining_.clear();
-  if (points_.empty()) return;
-  if (points_.size() == 1) {
-    test_points_ = points_;
+  build_bezier_path(points_, loop_enabled_, test_points_, test_distance_remaining_);
+}
+
+void RouteEditor::build_bezier_path(const std::vector<RoutePoint>& anchors, bool loop,
+                                    std::vector<RoutePoint>& path,
+                                    std::vector<float>& distance_remaining) {
+  path.clear();
+  distance_remaining.clear();
+  if (anchors.empty()) return;
+  if (anchors.size() == 1) {
+    path = anchors;
     return;
   }
-  const bool closed = loop_enabled_ && points_.size() >= 3;
-  const size_t segment_count = closed ? points_.size() : points_.size() - 1;
+  const bool closed = loop && anchors.size() >= 3;
+  const size_t segment_count = closed ? anchors.size() : anchors.size() - 1;
   auto anchor = [&](long long index) -> const RoutePoint& {
-    const long long count = static_cast<long long>(points_.size());
+    const long long count = static_cast<long long>(anchors.size());
     if (closed) {
       index %= count;
       if (index < 0) index += count;
-      return points_[static_cast<size_t>(index)];
+      return anchors[static_cast<size_t>(index)];
     }
-    return points_[static_cast<size_t>(std::clamp<long long>(index, 0, count - 1))];
+    return anchors[static_cast<size_t>(std::clamp<long long>(index, 0, count - 1))];
   };
-  test_points_.push_back(points_.front());
+  path.push_back(anchors.front());
   for (size_t segment = 0; segment < segment_count; ++segment) {
     const auto& p0 = anchor(static_cast<long long>(segment) - 1);
     const auto& p1 = anchor(static_cast<long long>(segment));
@@ -718,30 +750,29 @@ void RouteEditor::build_bezier_path() {
                                3.0f * u * t * t * c2y + t * t * t * p2.y;
       const float z = u * u * u * p1.z + 3.0f * u * u * t * c1z +
                       3.0f * u * t * t * c2z + t * t * t * p2.z;
-      test_points_.push_back({x, terrain_y(x, z, fallback_y), z, 0.0f});
+      path.push_back({x, terrain_y(x, z, fallback_y), z, 0.0f});
     }
   }
   size_t tangent_span = std::max<size_t>(2, static_cast<size_t>(
       std::lround(body_lookahead_m_ / 0.8f)));
-  const size_t unique_count = closed && test_points_.size() > 1
-                                  ? test_points_.size() - 1 : test_points_.size();
+  const size_t unique_count = closed && path.size() > 1 ? path.size() - 1 : path.size();
   if (closed) tangent_span = std::min(tangent_span, std::max<size_t>(1, (unique_count - 1) / 2));
   for (size_t i = 0; i < unique_count; ++i) {
     const size_t behind = closed ? (i + unique_count - tangent_span) % unique_count
                                  : (i > tangent_span ? i - tangent_span : 0);
     const size_t ahead = closed ? (i + tangent_span) % unique_count
                                 : std::min(i + tangent_span, unique_count - 1);
-    const float dx = test_points_[ahead].x - test_points_[behind].x;
-    const float dz = test_points_[ahead].z - test_points_[behind].z;
-    test_points_[i].heading = normalize_heading(std::atan2(dx, -dz) * 180.0f / pi);
+    const float dx = path[ahead].x - path[behind].x;
+    const float dz = path[ahead].z - path[behind].z;
+    path[i].heading = normalize_heading(std::atan2(dx, -dz) * 180.0f / pi);
   }
-  if (closed) test_points_.back().heading = test_points_.front().heading;
-  test_distance_remaining_.assign(test_points_.size(), 0.0f);
-  for (size_t i = test_points_.size(); i > 1; --i) {
-    const auto& a = test_points_[i - 2];
-    const auto& b = test_points_[i - 1];
-    test_distance_remaining_[i - 2] = test_distance_remaining_[i - 1] +
-                                      std::hypot(b.x - a.x, b.z - a.z);
+  if (closed) path.back().heading = path.front().heading;
+  distance_remaining.assign(path.size(), 0.0f);
+  for (size_t i = path.size(); i > 1; --i) {
+    const auto& a = path[i - 2];
+    const auto& b = path[i - 1];
+    distance_remaining[i - 2] = distance_remaining[i - 1] +
+                                std::hypot(b.x - a.x, b.z - a.z);
   }
 }
 
@@ -772,30 +803,38 @@ void RouteEditor::start_test() {
   show(spin_, 0.0f);
 }
 
-void RouteEditor::start_saved_route() {
-  if (!saved_route_available_ || saved_points_.size() < 2 ||
-      state_ == RouteEditorState::Planning) {
-    status_ = "No saved bus route available";
-    return;
-  }
-  if (runtime_playback_) return;
-  points_ = saved_points_;
-  loop_enabled_ = saved_loop_enabled_;
-  state_ = RouteEditorState::Editing;
-  return_to_planner_after_test_ = false;
-  runtime_playback_ = true;
-  start_test();
-  if (state_ != RouteEditorState::Testing) {
-    runtime_playback_ = false;
-    state_ = RouteEditorState::Idle;
-    return;
-  }
-  status_ = "Running: " + saved_route_label_;
+void RouteEditor::start_saved_route(size_t index) {
+  if (index >= traffic_routes_.size()) return;
+  auto& route = traffic_routes_[index];
+  if (!route.instance || route.path.size() < 2 || route.running) return;
+  route.current = route.path.front();
+  route.path_index = 1;
+  route.current_speed_mps = 0.0f;
+  route.spin = 0.0f;
+  route.steering = 0.0f;
+  route.running = true;
+  show_instance(route.instance, route.current, route.spin, route.steering);
+  status_ = "Running: " + route.label;
 }
 
-void RouteEditor::stop_saved_route() {
-  if (!runtime_playback_) return;
-  stop_test();
+void RouteEditor::stop_saved_route(size_t index) {
+  if (index >= traffic_routes_.size()) return;
+  auto& route = traffic_routes_[index];
+  route.running = false;
+  route.current_speed_mps = 0.0f;
+  route.steering = 0.0f;
+  show_instance(route.instance, route.current, route.spin, 0.0f);
+  status_ = "Stopped: " + route.label;
+}
+
+void RouteEditor::start_all_saved_routes() {
+  for (size_t i = 0; i < traffic_routes_.size(); ++i) start_saved_route(i);
+  if (!traffic_routes_.empty()) status_ = "All background traffic started";
+}
+
+void RouteEditor::stop_all_saved_routes() {
+  for (size_t i = 0; i < traffic_routes_.size(); ++i) stop_saved_route(i);
+  if (!traffic_routes_.empty()) status_ = "All background traffic stopped";
 }
 
 void RouteEditor::toggle_loop() {
@@ -808,24 +847,118 @@ void RouteEditor::toggle_loop() {
 void RouteEditor::stop_test() {
   if (state_ != RouteEditorState::Testing) return;
   const bool resume_planner = return_to_planner_after_test_;
-  const bool stopped_runtime = runtime_playback_;
-  runtime_playback_ = false;
-  state_ = stopped_runtime ? RouteEditorState::Idle : RouteEditorState::Editing;
-  status_ = stopped_runtime ? "Stopped: " + saved_route_label_ : "Route test stopped";
+  state_ = RouteEditorState::Editing;
+  status_ = "Route test stopped";
   return_to_planner_after_test_ = false;
   display_steering_ = 0.0f;
   current_speed_mps_ = 0.0f;
   show(spin_, 0.0f);
-  if (stopped_runtime) {
-    points_.clear();
-    test_points_.clear();
-    test_distance_remaining_.clear();
-    loop_enabled_ = false;
-  }
   if (resume_planner) {
     open_planner();
     status_ = "Route test stopped; planner resumed";
   }
+}
+
+void RouteEditor::update_traffic_route(TrafficRoute& route, float elapsed_seconds) {
+  if (!route.running || route.path_index >= route.path.size() || elapsed_seconds <= 0.0f)
+    return;
+  const auto& target = route.path[route.path_index];
+  const float dx = target.x - route.current.x;
+  const float dz = target.z - route.current.z;
+  const float distance = std::hypot(dx, dz);
+  size_t lookahead_index = route.path_index;
+  float lookahead_distance = 0.0f;
+  size_t lookahead_guard = 0;
+  while (lookahead_distance < body_lookahead_m_ &&
+         lookahead_guard++ < route.path.size()) {
+    size_t next_index = lookahead_index + 1;
+    if (next_index >= route.path.size()) {
+      if (!route.loop) break;
+      next_index = 1;
+    }
+    const auto& a = route.path[lookahead_index];
+    const auto& b = route.path[next_index];
+    lookahead_distance += std::hypot(b.x - a.x, b.z - a.z);
+    lookahead_index = next_index;
+  }
+  const auto& body_target = route.path[lookahead_index];
+  const float desired_heading = normalize_heading(
+      std::atan2(body_target.x - route.current.x,
+                 -(body_target.z - route.current.z)) * 180.0f / pi);
+  float delta = heading_delta(route.current.heading, desired_heading);
+  if (std::abs(delta) < 0.25f) delta = 0.0f;
+  const float heading_blend = 1.0f - std::exp(-body_heading_response_ * elapsed_seconds);
+  route.current.heading = normalize_heading(
+      route.current.heading + std::clamp(delta * heading_blend,
+                                         -35.0f * elapsed_seconds,
+                                         35.0f * elapsed_seconds));
+  const float route_curve = heading_delta(target.heading, body_target.heading);
+  const float corner_speed =
+      std::clamp(1.0f - std::abs(route_curve) / 80.0f, 0.40f, 1.0f);
+  float target_speed = route.speed_mps * corner_speed;
+  if (!route.loop && route.path_index < route.distance_remaining.size()) {
+    const float remaining = distance + route.distance_remaining[route.path_index];
+    target_speed = std::min(target_speed, std::sqrt(2.0f * braking_mps2_ * remaining));
+  }
+  route.current_speed_mps += std::clamp(
+      target_speed - route.current_speed_mps,
+      -braking_mps2_ * elapsed_seconds,
+      acceleration_mps2_ * elapsed_seconds);
+  float travel = std::max(0.0f, route.current_speed_mps * elapsed_seconds);
+  float travelled = 0.0f;
+  while (route.running) {
+    if (route.path_index >= route.path.size()) {
+      if (route.loop) {
+        route.current = route.path.front();
+        route.path_index = 1;
+      } else {
+        route.running = false;
+        route.current_speed_mps = 0.0f;
+        route.steering = 0.0f;
+        status_ = "Route complete: " + route.label;
+        show_instance(route.instance, route.current, route.spin, 0.0f);
+        return;
+      }
+    }
+    const auto& movement_target = route.path[route.path_index];
+    const float move_x = movement_target.x - route.current.x;
+    const float move_z = movement_target.z - route.current.z;
+    const float move_distance = std::hypot(move_x, move_z);
+    if (move_distance <= 0.0001f) {
+      route.current.x = movement_target.x;
+      route.current.y = movement_target.y;
+      route.current.z = movement_target.z;
+      ++route.path_index;
+      continue;
+    }
+    if (travel <= 0.00001f) break;
+    if (travel >= move_distance) {
+      route.current.x = movement_target.x;
+      route.current.y = movement_target.y;
+      route.current.z = movement_target.z;
+      travel -= move_distance;
+      travelled += move_distance;
+      ++route.path_index;
+    } else {
+      const float ratio = travel / move_distance;
+      route.current.x += move_x * ratio;
+      route.current.z += move_z * ratio;
+      route.current.y += (movement_target.y - route.current.y) * ratio;
+      travelled += travel;
+      travel = 0.0f;
+    }
+  }
+  route.spin += travelled / 3.0f;
+  route.spin -= std::floor(route.spin);
+  const float curvature = (route_curve * pi / 180.0f) /
+                          std::max(lookahead_distance, 0.5f);
+  const float steering_angle = std::atan(wheelbase_m_ * curvature) * 180.0f / pi;
+  float target_steering =
+      std::clamp(steering_angle / max_steering_deg_, -1.0f, 1.0f);
+  if (std::abs(route_curve) < 0.8f) target_steering = 0.0f;
+  const float steering_blend = 1.0f - std::exp(-6.0f * elapsed_seconds);
+  route.steering += (target_steering - route.steering) * steering_blend;
+  show_instance(route.instance, route.current, route.spin, route.steering);
 }
 
 void RouteEditor::update(float elapsed_seconds) {
@@ -837,10 +970,14 @@ void RouteEditor::update(float elapsed_seconds) {
     route_load_delay_seconds_ = 0.0f;
     if (!load_saved_route()) {
       status_ = "Ready: " + model_label_ + " | No saved route";
-    } else if (saved_autostart_) {
-      start_saved_route();
+    } else {
+      for (size_t i = 0; i < traffic_routes_.size(); ++i)
+        if (traffic_routes_[i].autostart) start_saved_route(i);
     }
   }
+  const float traffic_elapsed = std::clamp(elapsed_seconds, 0.0f, 0.10f);
+  for (auto& route : traffic_routes_)
+    if (route.running) update_traffic_route(route, traffic_elapsed);
   if (state_ != RouteEditorState::Testing || test_index_ >= test_points_.size()) return;
   elapsed_seconds = std::clamp(elapsed_seconds, 0.0f, 0.10f);
   if (elapsed_seconds <= 0.0f) return;
@@ -898,11 +1035,8 @@ void RouteEditor::update(float elapsed_seconds) {
       } else {
         current_speed_mps_ = 0.0f;
         display_steering_ = 0.0f;
-        const bool completed_runtime = runtime_playback_;
-        runtime_playback_ = false;
-        state_ = completed_runtime ? RouteEditorState::Idle : RouteEditorState::Editing;
-        status_ = completed_runtime ? "Route complete: " + saved_route_label_
-                                    : "Route test complete";
+        state_ = RouteEditorState::Editing;
+        status_ = "Route test complete";
         show(spin_, 0.0f);
         if (return_to_planner_after_test_) {
           return_to_planner_after_test_ = false;
@@ -963,44 +1097,68 @@ bool RouteEditor::save() {
     return false;
   }
   try {
-    json route;
-    route["schema"] = 1;
-    route["routes"] = json::array();
-    json item = {{"id", "bus_route_01"}, {"label", "Apron Bus Route 01"},
-                 {"model", model_id_}, {"path_type", "bezier"},
-                 {"loop", loop_enabled_}, {"autostart", true},
-                 {"speed_mps", speed_mps_}};
-    item["waypoints"] = json::array();
-    for (const auto& point : points_) {
-      double latitude{}, longitude{}, altitude{};
-      XPLMLocalToWorld(point.x, point.y, point.z, &latitude, &longitude, &altitude);
-      json waypoint = {{"latitude", latitude}, {"longitude", longitude},
-                       {"heading", point.heading}, {"kind", "bezier_anchor"},
-                       {"handle_mode", point.custom_handles ? "aligned" : "auto"}};
-      if (point.custom_handles) {
-        double in_lat{}, in_lon{}, in_alt{};
-        double out_lat{}, out_lon{}, out_alt{};
-        XPLMLocalToWorld(point.x + point.handle_in_x, point.y,
-                         point.z + point.handle_in_z, &in_lat, &in_lon, &in_alt);
-        XPLMLocalToWorld(point.x + point.handle_out_x, point.y,
-                         point.z + point.handle_out_z, &out_lat, &out_lon, &out_alt);
-        waypoint["handle_in_latitude"] = in_lat;
-        waypoint["handle_in_longitude"] = in_lon;
-        waypoint["handle_out_latitude"] = out_lat;
-        waypoint["handle_out_longitude"] = out_lon;
+    auto serialize_route = [&](const std::string& id, const std::string& label,
+                               bool loop, bool autostart, float route_speed,
+                               const std::vector<RoutePoint>& anchors) {
+      json item = {{"id", id}, {"label", label}, {"model", model_id_},
+                   {"path_type", "bezier"}, {"loop", loop},
+                   {"autostart", autostart}, {"speed_mps", route_speed}};
+      item["waypoints"] = json::array();
+      for (const auto& point : anchors) {
+        double latitude{}, longitude{}, altitude{};
+        XPLMLocalToWorld(point.x, point.y, point.z, &latitude, &longitude, &altitude);
+        json waypoint = {{"latitude", latitude}, {"longitude", longitude},
+                         {"heading", point.heading}, {"kind", "bezier_anchor"},
+                         {"handle_mode", point.custom_handles ? "aligned" : "auto"}};
+        if (point.custom_handles) {
+          double in_lat{}, in_lon{}, in_alt{};
+          double out_lat{}, out_lon{}, out_alt{};
+          XPLMLocalToWorld(point.x + point.handle_in_x, point.y,
+                           point.z + point.handle_in_z, &in_lat, &in_lon, &in_alt);
+          XPLMLocalToWorld(point.x + point.handle_out_x, point.y,
+                           point.z + point.handle_out_z, &out_lat, &out_lon, &out_alt);
+          waypoint["handle_in_latitude"] = in_lat;
+          waypoint["handle_in_longitude"] = in_lon;
+          waypoint["handle_out_latitude"] = out_lat;
+          waypoint["handle_out_longitude"] = out_lon;
+        }
+        item["waypoints"].push_back(std::move(waypoint));
       }
-      item["waypoints"].push_back(std::move(waypoint));
+      return item;
+    };
+    json route;
+    route["schema"] = 2;
+    route["routes"] = json::array();
+    for (const auto& existing : traffic_routes_) {
+      if (existing.id == editing_route_id_) continue;
+      route["routes"].push_back(serialize_route(
+          existing.id, existing.label, existing.loop, existing.autostart,
+          existing.speed_mps, existing.anchors));
     }
-    route["routes"].push_back(std::move(item));
+    route["routes"].push_back(serialize_route(
+        editing_route_id_.empty() ? "bus_route_01" : editing_route_id_,
+        editing_route_label_.empty() ? "Apron Bus Route 1" : editing_route_label_,
+        loop_enabled_, true, speed_mps_, points_));
     std::ofstream output(route_path_);
     output << route.dump(2) << '\n';
     if (!output) throw std::runtime_error("Cannot write route file");
-    saved_points_ = points_;
-    saved_loop_enabled_ = loop_enabled_;
-    saved_autostart_ = true;
-    saved_route_label_ = "Apron Bus Route 01";
-    saved_route_available_ = true;
-    status_ = "Saved: ssa_routes.json";
+    const std::string saved_label = editing_route_label_;
+    load_saved_route();
+    for (size_t i = 0; i < traffic_routes_.size(); ++i)
+      if (traffic_routes_[i].autostart) start_saved_route(i);
+    points_.clear();
+    test_points_.clear();
+    test_distance_remaining_.clear();
+    loop_enabled_ = false;
+    editing_route_id_.clear();
+    editing_route_label_.clear();
+    state_ = RouteEditorState::Idle;
+    if (instance_) XPLMDestroyInstance(instance_);
+    const char* datarefs[] = {"boldstudio31/ssa/vehicle/wheel_spin",
+                              "boldstudio31/ssa/vehicle/steering", nullptr};
+    instance_ = XPLMCreateInstance(object_, datarefs);
+    status_ = "Saved " + saved_label + " | " +
+              std::to_string(traffic_routes_.size()) + " route(s) total";
     return true;
   } catch (const std::exception& e) {
     status_ = e.what();
@@ -1016,7 +1174,8 @@ void RouteEditor::cancel() {
   test_distance_remaining_.clear();
   return_to_planner_after_test_ = false;
   loop_enabled_ = false;
-  runtime_playback_ = false;
+  editing_route_id_.clear();
+  editing_route_label_.clear();
   handle_drag_anchor_ = -1;
   current_speed_mps_ = 0.0f;
   state_ = RouteEditorState::Idle;

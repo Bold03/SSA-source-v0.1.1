@@ -53,6 +53,13 @@ Developer Mode is disabled. A closed route continues running when LOOP is ON;
 an open route brakes and stops at its final anchor. Future RealOps passenger
 buses are intentionally separate from this background traffic system.
 
+SSA supports up to sixteen saved background routes per scenery with the current
+configured vehicle model. Each new PLAN
+ROUTE session receives the next free `bus_route_XX` identifier, and SAVE appends
+it to `ssa_routes.json` without replacing earlier routes. The TRAFFIC tab can
+start or stop each of the first five routes separately and provides START ALL
+and STOP ALL for the complete collection.
+
 `body_lookahead_m` controls how far ahead the bus looks when choosing its body
 heading; a longer distance suppresses small left/right corrections. The
 `body_heading_response` value controls how quickly the body rotates toward that
