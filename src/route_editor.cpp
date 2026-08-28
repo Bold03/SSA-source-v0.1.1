@@ -42,8 +42,10 @@ void RouteEditor::unload() {
   planner_drag_active_ = false;
   points_.clear();
   test_points_.clear();
+  test_distance_remaining_.clear();
   return_to_planner_after_test_ = false;
   loop_enabled_ = false;
+  current_speed_mps_ = 0.0f;
   state_ = RouteEditorState::Unavailable;
 }
 
@@ -68,6 +70,9 @@ bool RouteEditor::load(const std::string& xplane_root) {
       model_label_ = model.value("label", model_id_);
       ground_offset_m_ = model.value("ground_offset_m", 0.445f);
       speed_mps_ = std::clamp(model.value("speed_mps", 4.0f), 0.5f, 15.0f);
+      acceleration_mps2_ =
+          std::clamp(model.value("acceleration_mps2", 1.5f), 0.2f, 6.0f);
+      braking_mps2_ = std::clamp(model.value("braking_mps2", 2.5f), 0.5f, 8.0f);
       heading_offset_deg_ = model.value("heading_offset_deg", 180.0f);
       steering_multiplier_ = model.value("steering_multiplier", -1.0f);
       body_lookahead_m_ = std::clamp(model.value("body_lookahead_m", 6.0f), 1.0f, 12.0f);
@@ -471,6 +476,7 @@ float RouteEditor::heading_delta(float from, float to) {
 
 void RouteEditor::build_bezier_path() {
   test_points_.clear();
+  test_distance_remaining_.clear();
   if (points_.empty()) return;
   if (points_.size() == 1) {
     test_points_ = points_;
@@ -529,6 +535,13 @@ void RouteEditor::build_bezier_path() {
     test_points_[i].heading = normalize_heading(std::atan2(dx, -dz) * 180.0f / pi);
   }
   if (closed) test_points_.back().heading = test_points_.front().heading;
+  test_distance_remaining_.assign(test_points_.size(), 0.0f);
+  for (size_t i = test_points_.size(); i > 1; --i) {
+    const auto& a = test_points_[i - 2];
+    const auto& b = test_points_[i - 1];
+    test_distance_remaining_[i - 2] = test_distance_remaining_[i - 1] +
+                                      std::hypot(b.x - a.x, b.z - a.z);
+  }
 }
 
 void RouteEditor::start_test() {
@@ -551,6 +564,7 @@ void RouteEditor::start_test() {
   current_ = test_points_.front();
   test_index_ = 1;
   spin_ = 0.0f;
+  current_speed_mps_ = 0.0f;
   display_steering_ = 0.0f;
   state_ = RouteEditorState::Testing;
   status_ = "Route test running";
@@ -571,6 +585,7 @@ void RouteEditor::stop_test() {
   status_ = "Route test stopped";
   return_to_planner_after_test_ = false;
   display_steering_ = 0.0f;
+  current_speed_mps_ = 0.0f;
   show(spin_, 0.0f);
   if (resume_planner) {
     open_planner();
@@ -581,37 +596,12 @@ void RouteEditor::stop_test() {
 void RouteEditor::update(float elapsed_seconds) {
   update_planner_drag();
   if (state_ != RouteEditorState::Testing || test_index_ >= test_points_.size()) return;
+  elapsed_seconds = std::clamp(elapsed_seconds, 0.0f, 0.10f);
+  if (elapsed_seconds <= 0.0f) return;
   const auto& target = test_points_[test_index_];
   const float dx = target.x - current_.x;
   const float dz = target.z - current_.z;
   const float distance = std::sqrt(dx * dx + dz * dz);
-  if (distance <= 0.05f) {
-    current_.x = target.x;
-    current_.y = target.y;
-    current_.z = target.z;
-    ++test_index_;
-    if (test_index_ >= test_points_.size()) {
-      if (loop_enabled_) {
-        current_.x = test_points_.front().x;
-        current_.y = test_points_.front().y;
-        current_.z = test_points_.front().z;
-        test_index_ = 1;
-        status_ = "Route loop running";
-        show(spin_, display_steering_);
-        return;
-      }
-      state_ = RouteEditorState::Editing;
-      status_ = "Route test complete";
-      display_steering_ = 0.0f;
-      show(spin_, 0.0f);
-      if (return_to_planner_after_test_) {
-        return_to_planner_after_test_ = false;
-        open_planner();
-        status_ = "Route test complete; planner resumed";
-      }
-    }
-    return;
-  }
   size_t body_lookahead_index = test_index_;
   float lookahead_distance = 0.0f;
   size_t lookahead_guard = 0;
@@ -640,11 +630,68 @@ void RouteEditor::update(float elapsed_seconds) {
   current_.heading = normalize_heading(current_.heading + turn_step);
   const float route_curve = heading_delta(target.heading, body_target.heading);
   const float corner_speed = std::clamp(1.0f - std::abs(route_curve) / 80.0f, 0.40f, 1.0f);
-  const float step = std::min(distance, speed_mps_ * corner_speed * elapsed_seconds);
-  current_.x += dx / distance * step;
-  current_.z += dz / distance * step;
-  current_.y += (target.y - current_.y) * (step / distance);
-  spin_ += step / 3.0f;
+  float target_speed = speed_mps_ * corner_speed;
+  if (!loop_enabled_ && test_index_ < test_distance_remaining_.size()) {
+    const float remaining = distance + test_distance_remaining_[test_index_];
+    target_speed = std::min(target_speed, std::sqrt(2.0f * braking_mps2_ * remaining));
+  }
+  const float speed_delta = target_speed - current_speed_mps_;
+  current_speed_mps_ += std::clamp(speed_delta,
+                                   -braking_mps2_ * elapsed_seconds,
+                                   acceleration_mps2_ * elapsed_seconds);
+  float travel = std::max(0.0f, current_speed_mps_ * elapsed_seconds);
+  float travelled = 0.0f;
+  while (state_ == RouteEditorState::Testing) {
+    if (test_index_ >= test_points_.size()) {
+      if (loop_enabled_) {
+        current_.x = test_points_.front().x;
+        current_.y = test_points_.front().y;
+        current_.z = test_points_.front().z;
+        test_index_ = 1;
+        status_ = "Route loop running";
+      } else {
+        current_speed_mps_ = 0.0f;
+        display_steering_ = 0.0f;
+        state_ = RouteEditorState::Editing;
+        status_ = "Route test complete";
+        show(spin_, 0.0f);
+        if (return_to_planner_after_test_) {
+          return_to_planner_after_test_ = false;
+          open_planner();
+          status_ = "Route test complete; planner resumed";
+        }
+        return;
+      }
+    }
+    const auto& movement_target = test_points_[test_index_];
+    const float move_x = movement_target.x - current_.x;
+    const float move_z = movement_target.z - current_.z;
+    const float move_distance = std::hypot(move_x, move_z);
+    if (move_distance <= 0.0001f) {
+      current_.x = movement_target.x;
+      current_.y = movement_target.y;
+      current_.z = movement_target.z;
+      ++test_index_;
+      continue;
+    }
+    if (travel <= 0.00001f) break;
+    if (travel >= move_distance) {
+      current_.x = movement_target.x;
+      current_.y = movement_target.y;
+      current_.z = movement_target.z;
+      travel -= move_distance;
+      travelled += move_distance;
+      ++test_index_;
+    } else {
+      const float ratio = travel / move_distance;
+      current_.x += move_x * ratio;
+      current_.z += move_z * ratio;
+      current_.y += (movement_target.y - current_.y) * ratio;
+      travelled += travel;
+      travel = 0.0f;
+    }
+  }
+  spin_ += travelled / 3.0f;
   spin_ -= std::floor(spin_);
   float target_steering = std::clamp(route_curve / 28.0f, -1.0f, 1.0f);
   if (std::abs(route_curve) < 0.8f) target_steering = 0.0f;
@@ -693,8 +740,10 @@ void RouteEditor::cancel() {
   if (planner_active_) close_planner();
   points_.clear();
   test_points_.clear();
+  test_distance_remaining_.clear();
   return_to_planner_after_test_ = false;
   loop_enabled_ = false;
+  current_speed_mps_ = 0.0f;
   state_ = RouteEditorState::Idle;
   status_ = "Route editor idle";
   if (instance_) {

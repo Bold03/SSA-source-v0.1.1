@@ -15,7 +15,9 @@ Add a vehicle model entry at the top level of `ssa.json`:
     "steering_multiplier": -1.0,
     "body_lookahead_m": 6.0,
     "body_heading_response": 1.8,
-    "speed_mps": 4.0
+    "speed_mps": 4.0,
+    "acceleration_mps2": 1.5,
+    "braking_mps2": 2.5
   }
 ]
 ```
@@ -42,6 +44,10 @@ beside the scenery's `ssa.json`.
 heading; a longer distance suppresses small left/right corrections. The
 `body_heading_response` value controls how quickly the body rotates toward that
 heading. The Gapura bus defaults to 6 metres and 1.8 respectively.
+
+Vehicle instances update every simulator frame. `acceleration_mps2` and
+`braking_mps2` control traffic-style speed changes; the default bus accelerates
+at 1.5 m/s2 and brakes at 2.5 m/s2 instead of instantly changing speed.
 
 ## Folder layout
 

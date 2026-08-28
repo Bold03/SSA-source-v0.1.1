@@ -442,18 +442,19 @@ void menu_handler(void*, void* item_ref) {
 
 float flight_loop(float elapsed, float, int, void*) {
   if (!scenery || !tablet) return 1.0f;
+  const float frame_elapsed = std::clamp(elapsed, 0.0f, 0.10f);
   const double lat = lat_ref ? XPLMGetDatad(lat_ref) : 0.0;
   const double lon = lon_ref ? XPLMGetDatad(lon_ref) : 0.0;
   const float aircraft_heading = heading_ref ? XPLMGetDataf(heading_ref) : 0.0f;
   tablet->set_position(lat, lon, aircraft_heading);
   if (vehicle_spin_test && vehicle_spin_ref) {
-    float spin = vehicle_spin_ref->value() + elapsed * 0.65f;
+    float spin = vehicle_spin_ref->value() + frame_elapsed * 0.65f;
     if (spin >= 1.0f) spin -= std::floor(spin);
     vehicle_spin_ref->set(spin);
   }
   tablet->set_vehicle_test(vehicle_spin_test,
                            vehicle_steering_ref ? vehicle_steering_ref->value() : 0.0f);
-  compatibility_timer += elapsed;
+  compatibility_timer += frame_elapsed;
   if (compatibility_timer >= 1.0f) {
     compatibility_timer = 0.0f;
     const bool detected = XPLMFindPluginBySignature("realops") != XPLM_NO_PLUGIN_ID;
@@ -489,11 +490,11 @@ float flight_loop(float elapsed, float, int, void*) {
       }
     }
   }
-  scenery->update(elapsed, realops_detected);
-  if (route_editor) route_editor->update(elapsed);
+  scenery->update(frame_elapsed, realops_detected);
+  if (route_editor) route_editor->update(frame_elapsed);
   for (auto& object : scenery->objects())
     if (object.type == ssa::ServiceType::Jetway) advance_jetway_docking(object);
-  return 0.05f;
+  return -1.0f;
 }
 } // namespace
 
@@ -551,8 +552,8 @@ PLUGIN_API int XPluginStart(char* name, char* signature, char* description) {
     XPLMAppendMenuItem(menu, "Reload scenery configuration", reinterpret_cast<void*>(2), 0);
     XPLMAppendMenuItem(menu, "Toggle nearest hangar", reinterpret_cast<void*>(3), 0);
     XPLMAppendMenuItem(menu, "Toggle nearest jetway", reinterpret_cast<void*>(4), 0);
-    XPLMRegisterFlightLoopCallback(flight_loop, 0.05f, nullptr);
-    log("SSA 0.10.0 started: " + std::to_string(scenery->objects().size()) +
+    XPLMRegisterFlightLoopCallback(flight_loop, -1.0f, nullptr);
+    log("SSA 0.10.1 started: " + std::to_string(scenery->objects().size()) +
         " object(s), L1 door dataref " + (door_open_ref ? "detected" : "not found"));
     return 1;
   } catch (const std::exception& e) {

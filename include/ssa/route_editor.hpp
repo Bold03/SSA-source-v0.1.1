@@ -76,11 +76,14 @@ private:
   std::string status_{"No vehicle model configured"};
   float ground_offset_m_{0.445f};
   float speed_mps_{4.0f};
+  float acceleration_mps2_{1.5f};
+  float braking_mps2_{2.5f};
   float heading_offset_deg_{180.0f};
   float steering_multiplier_{-1.0f};
   float body_lookahead_m_{6.0f};
   float body_heading_response_{1.8f};
   float spin_{};
+  float current_speed_mps_{};
   float display_steering_{};
   float planner_height_m_{160.0f};
   float planner_center_x_{};
@@ -96,6 +99,7 @@ private:
   RoutePoint current_{};
   std::vector<RoutePoint> points_;
   std::vector<RoutePoint> test_points_;
+  std::vector<float> test_distance_remaining_;
   XPLMObjectRef object_{};
   XPLMInstanceRef instance_{};
   XPLMProbeRef probe_{};

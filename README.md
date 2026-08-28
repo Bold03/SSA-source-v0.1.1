@@ -1,14 +1,14 @@
 # SSA — Scenery Service Animation
 
 **Developer:** BoldStudio31  
-**Status:** automatic Bezier vehicle route planner beta 0.10.0  
+**Status:** automatic Bezier vehicle route planner beta 0.10.1  
 **Targets:** X-Plane 11.50+ and X-Plane 12; Windows, Linux and macOS
 
 SSA is a standalone animation controller for scenery objects. It provides custom
 datarefs for hangars, jetways, moving vehicles, ground staff and parking
 displays. It does not depend on SAM or AutoGate.
 
-## Implemented through 0.10.0
+## Implemented through 0.10.1
 
 - Dynamic custom datarefs loaded from each scenery package's `ssa.json`.
 - Smooth open/close animation with configurable speed.
@@ -52,6 +52,12 @@ displays. It does not depend on SAM or AutoGate.
 - Each click is an automatic Bezier anchor. LOOP can close routes with three or
   more anchors, continuously replay the bus animation, and is stored in
   `ssa_routes.json`; stopping the test returns to the retained planner.
+- Vehicle instances now update on every simulator frame instead of at 20 Hz.
+  A distance-budget walker crosses multiple Bezier samples without inserting
+  empty frames, eliminating the repeated micro-pause at each sample.
+- Traffic-style acceleration and braking provide gradual starts, corner speed
+  control and smooth stops. Frame delta is capped after simulator stalls so a
+  temporary low-FPS spike cannot teleport the vehicle down the route.
 - Per-model heading offsets correct OBJ forward-axis differences without
   re-exporting Blender; the Gapura bus profile uses 180 degrees.
 - Nearby hangar list (2 km) and small jetway activation radius (35 m).
