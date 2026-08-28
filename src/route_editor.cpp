@@ -1089,6 +1089,23 @@ float RouteEditor::traffic_speed_limit(const TrafficRoute& route) const {
 
     const float longitudinal = dx * forward_x + dz * forward_z;
     const float lateral = std::abs(dx * forward_z - dz * forward_x);
+    const float heading_difference =
+        std::abs(heading_delta(route.current.heading, other.current.heading));
+
+    // Hard body separation. A following bus must stop when it has already
+    // entered the protected distance, even if both buses currently have the
+    // same speed. At a crossing, stable load order provides right-of-way and
+    // prevents both vehicles from waiting forever.
+    if (distance < collision_stop_distance_m_) {
+      if (heading_difference > 45.0f) {
+        if (&route > &other) speed_limit = 0.0f;
+      } else if (longitudinal > 0.0f &&
+                 lateral <= collision_lane_half_width_m_) {
+        speed_limit = 0.0f;
+      }
+      continue;
+    }
+
     if (longitudinal <= 0.0f || lateral > collision_lane_half_width_m_) continue;
 
     const float free_distance = std::max(

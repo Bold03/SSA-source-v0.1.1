@@ -1,7 +1,7 @@
 # SSA — Scenery Service Animation
 
 **Developer:** BoldStudio31  
-**Status:** editable multi-model bus traffic beta 0.16.0  
+**Status:** hard-separation multi-model bus traffic beta 0.16.1  
 **Targets:** X-Plane 11.50+ and X-Plane 12; Windows, Linux and macOS
 
 SSA is a standalone animation controller for scenery objects. It provides custom
@@ -13,7 +13,7 @@ developers. Open it in a browser, choose a scenery folder and OBJ, and copy the
 sanitized `boldstudio31/ssa/animation/scenery/object` dataref into both Blender
 and `ssa.json`.
 
-## Implemented through 0.16.0
+## Implemented through 0.16.1
 
 - Dynamic custom datarefs loaded from each scenery package's `ssa.json`.
 - Smooth open/close animation with configurable speed.
@@ -121,6 +121,11 @@ and `ssa.json`.
 - SAVE replaces the route with the same ID instead of appending a duplicate.
   CANCEL leaves the stored route unchanged and resumes it when it was running;
   autostart and manually-started state are preserved across a successful edit.
+- Collision avoidance now includes hard body separation. A following bus that
+  enters the protected distance stops even when both vehicles previously had
+  matching speeds, allowing an unsafe overlap to clear instead of persisting.
+- Perpendicular routes use stable right-of-way while buses are close, avoiding
+  both a crossing collision and a permanent two-bus deadlock.
 - Nearby hangar list (2 km) and small jetway activation radius (35 m).
 - Per-channel automatic jetway targets calculated from aircraft position,
   heading, door profile and scenery-configured movement limits.
