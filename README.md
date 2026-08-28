@@ -1,7 +1,7 @@
 # SSA — Scenery Service Animation
 
 **Developer:** BoldStudio31  
-**Status:** adaptive-speed multi-route traffic beta 0.13.1  
+**Status:** predictive-braking multi-route traffic beta 0.13.2  
 **Targets:** X-Plane 11.50+ and X-Plane 12; Windows, Linux and macOS
 
 SSA is a standalone animation controller for scenery objects. It provides custom
@@ -13,7 +13,7 @@ developers. Open it in a browser, choose a scenery folder and OBJ, and copy the
 sanitized `boldstudio31/ssa/animation/scenery/object` dataref into both Blender
 and `ssa.json`.
 
-## Implemented through 0.13.1
+## Implemented through 0.13.2
 
 - Dynamic custom datarefs loaded from each scenery package's `ssa.json`.
 - Smooth open/close animation with configurable speed.
@@ -96,6 +96,9 @@ and `ssa.json`.
   base speed, while routes from 80 to 300 metres smoothly increase toward a
   configurable 9 m/s maximum. Corner slowing, acceleration and endpoint
   braking still apply independently to every route.
+- Predictive turn braking scans at least 15 metres and about three seconds ahead
+  along the Bezier path. Sharp turns are approached near 2.2 m/s, followed by
+  gradual acceleration after the route straightens, reducing waypoint drift.
 - Nearby hangar list (2 km) and small jetway activation radius (35 m).
 - Per-channel automatic jetway targets calculated from aircraft position,
   heading, door profile and scenery-configured movement limits.

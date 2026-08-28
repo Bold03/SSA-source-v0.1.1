@@ -87,6 +87,14 @@ bool RouteEditor::load(const std::string& xplane_root) {
       adaptive_speed_full_m_ = std::clamp(
           model.value("adaptive_speed_full_m", 300.0f),
           adaptive_speed_start_m_ + 10.0f, 5000.0f);
+      turn_preview_seconds_ =
+          std::clamp(model.value("turn_preview_seconds", 3.0f), 1.0f, 8.0f);
+      turn_preview_min_m_ =
+          std::clamp(model.value("turn_preview_min_m", 15.0f), 5.0f, 80.0f);
+      corner_min_speed_mps_ =
+          std::clamp(model.value("corner_min_speed_mps", 2.2f), 0.5f, 8.0f);
+      corner_full_slowdown_deg_ = std::clamp(
+          model.value("corner_full_slowdown_deg", 35.0f), 10.0f, 90.0f);
       heading_offset_deg_ = model.value("heading_offset_deg", 180.0f);
       steering_multiplier_ = model.value("steering_multiplier", -1.0f);
       body_lookahead_m_ = std::clamp(model.value("body_lookahead_m", 6.0f), 1.0f, 12.0f);
@@ -234,6 +242,30 @@ float RouteEditor::adaptive_speed(float base_speed, float route_length) const {
   const float ratio = std::clamp((route_length - adaptive_speed_start_m_) / span,
                                  0.0f, 1.0f);
   return base_speed + (std::max(base_speed, max_speed_mps_) - base_speed) * ratio;
+}
+
+float RouteEditor::upcoming_turn_degrees(const std::vector<RoutePoint>& path,
+                                         size_t index, bool loop,
+                                         float preview_distance) const {
+  if (path.size() < 2 || index >= path.size()) return 0.0f;
+  const float base_heading = path[index].heading;
+  float travelled = 0.0f;
+  float maximum_turn = 0.0f;
+  size_t cursor = index;
+  size_t guard = 0;
+  while (travelled < preview_distance && guard++ < path.size()) {
+    size_t next = cursor + 1;
+    if (next >= path.size()) {
+      if (!loop) break;
+      next = 1;
+    }
+    travelled += std::hypot(path[next].x - path[cursor].x,
+                            path[next].z - path[cursor].z);
+    maximum_turn = std::max(
+        maximum_turn, std::abs(heading_delta(base_heading, path[next].heading)));
+    cursor = next;
+  }
+  return maximum_turn;
 }
 
 void RouteEditor::show_instance(XPLMInstanceRef instance, const RoutePoint& point,
@@ -912,9 +944,16 @@ void RouteEditor::update_traffic_route(TrafficRoute& route, float elapsed_second
                                          -35.0f * elapsed_seconds,
                                          35.0f * elapsed_seconds));
   const float route_curve = heading_delta(target.heading, body_target.heading);
-  const float corner_speed =
-      std::clamp(1.0f - std::abs(route_curve) / 80.0f, 0.40f, 1.0f);
-  float target_speed = route.cruise_speed_mps * corner_speed;
+  const float preview_distance = std::max(
+      turn_preview_min_m_, route.current_speed_mps * turn_preview_seconds_);
+  const float upcoming_turn = upcoming_turn_degrees(
+      route.path, route.path_index, route.loop, preview_distance);
+  const float severity = std::clamp(
+      upcoming_turn / corner_full_slowdown_deg_, 0.0f, 1.0f);
+  const float minimum_factor = std::clamp(
+      corner_min_speed_mps_ / std::max(route.cruise_speed_mps, 0.5f), 0.0f, 1.0f);
+  const float corner_factor = 1.0f - severity * (1.0f - minimum_factor);
+  float target_speed = route.cruise_speed_mps * corner_factor;
   if (!route.loop && route.path_index < route.distance_remaining.size()) {
     const float remaining = distance + route.distance_remaining[route.path_index];
     target_speed = std::min(target_speed, std::sqrt(2.0f * braking_mps2_ * remaining));
@@ -1031,8 +1070,16 @@ void RouteEditor::update(float elapsed_seconds) {
                                      35.0f * elapsed_seconds);
   current_.heading = normalize_heading(current_.heading + turn_step);
   const float route_curve = heading_delta(target.heading, body_target.heading);
-  const float corner_speed = std::clamp(1.0f - std::abs(route_curve) / 80.0f, 0.40f, 1.0f);
-  float target_speed = test_cruise_speed_mps_ * corner_speed;
+  const float preview_distance = std::max(
+      turn_preview_min_m_, current_speed_mps_ * turn_preview_seconds_);
+  const float upcoming_turn = upcoming_turn_degrees(
+      test_points_, test_index_, loop_enabled_, preview_distance);
+  const float severity = std::clamp(
+      upcoming_turn / corner_full_slowdown_deg_, 0.0f, 1.0f);
+  const float minimum_factor = std::clamp(
+      corner_min_speed_mps_ / std::max(test_cruise_speed_mps_, 0.5f), 0.0f, 1.0f);
+  const float corner_factor = 1.0f - severity * (1.0f - minimum_factor);
+  float target_speed = test_cruise_speed_mps_ * corner_factor;
   if (!loop_enabled_ && test_index_ < test_distance_remaining_.size()) {
     const float remaining = distance + test_distance_remaining_[test_index_];
     target_speed = std::min(target_speed, std::sqrt(2.0f * braking_mps2_ * remaining));

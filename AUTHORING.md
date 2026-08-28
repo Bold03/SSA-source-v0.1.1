@@ -22,6 +22,10 @@ Add a vehicle model entry at the top level of `ssa.json`:
     "max_speed_mps": 9.0,
     "adaptive_speed_start_m": 80.0,
     "adaptive_speed_full_m": 300.0,
+    "turn_preview_seconds": 3.0,
+    "turn_preview_min_m": 15.0,
+    "corner_min_speed_mps": 2.2,
+    "corner_full_slowdown_deg": 35.0,
     "acceleration_mps2": 1.5,
     "braking_mps2": 2.5
   }
@@ -82,6 +86,12 @@ Adaptive cruise speed keeps short apron routes at `speed_mps` and gradually
 raises longer routes toward `max_speed_mps`. The default ramp starts at 80 m
 and reaches full speed at 300 m. Curve-speed reduction and final braking remain
 active, so increasing long-route speed does not remove corner control.
+
+Turn-preview braking scans several seconds ahead on the sampled Bezier path.
+With the defaults, SSA looks at least 15 m ahead, begins braking before a bend,
+and reaches about 2.2 m/s for turns of 35 degrees or sharper. It accelerates
+again only after the upcoming path straightens, reducing body and rear-axle
+drift at waypoint transitions.
 
 ## Folder layout
 

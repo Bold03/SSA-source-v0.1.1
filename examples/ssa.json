@@ -18,6 +18,10 @@
       "max_speed_mps": 9.0,
       "adaptive_speed_start_m": 80.0,
       "adaptive_speed_full_m": 300.0,
+      "turn_preview_seconds": 3.0,
+      "turn_preview_min_m": 15.0,
+      "corner_min_speed_mps": 2.2,
+      "corner_full_slowdown_deg": 35.0,
       "acceleration_mps2": 1.5,
       "braking_mps2": 2.5
     }

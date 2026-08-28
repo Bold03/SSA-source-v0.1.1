@@ -94,6 +94,8 @@ private:
                          std::vector<float>& distance_remaining);
   void update_traffic_route(TrafficRoute& route, float elapsed_seconds);
   float adaptive_speed(float base_speed, float route_length) const;
+  float upcoming_turn_degrees(const std::vector<RoutePoint>& path, size_t index,
+                              bool loop, float preview_distance) const;
   void update_planner_drag();
   void open_planner();
   void close_planner();
@@ -127,6 +129,10 @@ private:
   float max_speed_mps_{9.0f};
   float adaptive_speed_start_m_{80.0f};
   float adaptive_speed_full_m_{300.0f};
+  float turn_preview_seconds_{3.0f};
+  float turn_preview_min_m_{15.0f};
+  float corner_min_speed_mps_{2.2f};
+  float corner_full_slowdown_deg_{35.0f};
   float heading_offset_deg_{180.0f};
   float steering_multiplier_{-1.0f};
   float body_lookahead_m_{6.0f};
