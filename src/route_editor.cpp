@@ -43,6 +43,7 @@ void RouteEditor::unload() {
   probe_ = nullptr;
   planner_window_ = nullptr;
   planner_drag_active_ = false;
+  anchor_drag_index_ = -1;
   route_load_pending_ = false;
   route_load_delay_seconds_ = 0.0f;
   handle_drag_anchor_ = -1;
@@ -56,6 +57,10 @@ void RouteEditor::unload() {
   test_distance_remaining_.clear();
   return_to_planner_after_test_ = false;
   loop_enabled_ = false;
+  editing_existing_route_ = false;
+  editing_route_autostart_ = true;
+  editing_route_was_running_ = false;
+  editing_route_speed_mps_ = speed_mps_;
   editing_route_id_.clear();
   editing_route_label_.clear();
   current_speed_mps_ = 0.0f;
@@ -355,6 +360,10 @@ void RouteEditor::create_route(double latitude, double longitude, float heading)
               static_cast<float>(z), normalize_heading(heading)};
   points_.clear();
   points_.push_back(current_);
+  editing_existing_route_ = false;
+  editing_route_autostart_ = true;
+  editing_route_was_running_ = false;
+  editing_route_speed_mps_ = speed_mps_;
   size_t route_number = 1;
   for (;;) {
     char route_id[32];
@@ -427,6 +436,7 @@ void RouteEditor::close_planner() {
   if (!planner_active_) return;
   planner_active_ = false;
   planner_drag_active_ = false;
+  anchor_drag_index_ = -1;
   handle_drag_anchor_ = -1;
   if (planner_window_) XPLMSetWindowIsVisible(planner_window_, 0);
   XPLMDontControlCamera();
@@ -465,7 +475,7 @@ void RouteEditor::draw_planner() {
   float marker_color[] = {1.0f, 0.72f, 0.20f};
   float route_color[] = {0.55f, 1.0f, 0.70f};
   float handle_color[] = {0.30f, 0.80f, 1.0f};
-  char title[] = "SSA BEZIER ROUTE | CLICK: ADD | RMB HOLD+DRAG ANCHOR: CURVE | SHIFT+MMB: PAN";
+  char title[] = "SSA BEZIER ROUTE | CLICK: ADD | LMB DRAG: MOVE | RMB DRAG: CURVE | SHIFT+MMB: PAN";
   XPLMDrawString(title_color, left + 24, top - 30, title, nullptr,
                  xplmFont_Proportional);
   auto draw_button = [&](int button_left, int button_top, int button_right,
@@ -571,9 +581,49 @@ int RouteEditor::planner_mouse_cb(XPLMWindowID, int x, int y, XPLMMouseStatus st
 }
 
 int RouteEditor::planner_mouse(int x, int y, XPLMMouseStatus status) {
-  if (!planner_active_ || status != xplm_MouseDown) return 1;
+  if (!planner_active_) return 1;
   int left{}, top{}, right{}, bottom{};
   XPLMGetWindowGeometry(planner_window_, &left, &top, &right, &bottom);
+  const float width = static_cast<float>(std::max(1, right - left));
+  const float height = static_cast<float>(std::max(1, top - bottom));
+  const float half_width_m = planner_half_width();
+  const float half_height_m = half_width_m * height / width;
+  auto world_position = [&](int mouse_x, int mouse_y, float& world_x,
+                            float& world_z) {
+    world_x = planner_center_x_ +
+              ((mouse_x - left) / width * 2.0f - 1.0f) * half_width_m;
+    world_z = planner_center_z_ -
+              ((mouse_y - bottom) / height * 2.0f - 1.0f) * half_height_m;
+  };
+  auto screen_position = [&](const RoutePoint& point, int& screen_x, int& screen_y) {
+    screen_x = static_cast<int>(left + width * 0.5f +
+                                (point.x - planner_center_x_) / half_width_m *
+                                    width * 0.5f);
+    screen_y = static_cast<int>(bottom + height * 0.5f -
+                                (point.z - planner_center_z_) / half_height_m *
+                                    height * 0.5f);
+  };
+  if (status == xplm_MouseUp) {
+    if (anchor_drag_index_ >= 0) status_ = "Anchor moved; press SAVE to keep changes";
+    anchor_drag_index_ = -1;
+    return 1;
+  }
+  if (status == xplm_MouseDrag) {
+    if (anchor_drag_index_ < 0 ||
+        static_cast<size_t>(anchor_drag_index_) >= points_.size()) return 1;
+    float world_x{}, world_z{};
+    world_position(x, y, world_x, world_z);
+    auto& point = points_[static_cast<size_t>(anchor_drag_index_)];
+    point.x = world_x;
+    point.z = world_z;
+    point.y = terrain_y(world_x, world_z, point.y);
+    current_ = point;
+    build_bezier_path();
+    show(spin_, 0.0f);
+    status_ = "Moving anchor " + std::to_string(anchor_drag_index_ + 1);
+    return 1;
+  }
+  if (status != xplm_MouseDown) return 1;
   const bool toolbar_y = y >= top - 74 && y <= top - 42;
   if (toolbar_y) {
     if (x >= left + 24 && x <= left + 110) undo_point();
@@ -585,7 +635,7 @@ int RouteEditor::planner_mouse(int x, int y, XPLMMouseStatus status) {
       if (save()) close_planner();
       else state_ = RouteEditorState::Planning;
     } else if (x >= right - 110 && x <= right - 24) {
-      close_planner();
+      cancel();
     }
     return 1;
   }
@@ -618,14 +668,24 @@ int RouteEditor::planner_mouse(int x, int y, XPLMMouseStatus status) {
   if (x >= right - 230 && y <= top - 170 && y >= top - 340) return 1;
   // Keep the title/toolbar band from accidentally creating an anchor.
   if (y > top - 90) return 1;
-  const float width = static_cast<float>(std::max(1, right - left));
-  const float height = static_cast<float>(std::max(1, top - bottom));
-  const float half_width_m = planner_half_width();
-  const float half_height_m = half_width_m * height / width;
-  const float world_x = planner_center_x_ +
-                        ((x - left) / width * 2.0f - 1.0f) * half_width_m;
-  const float world_z = planner_center_z_ -
-                        ((y - bottom) / height * 2.0f - 1.0f) * half_height_m;
+  anchor_drag_index_ = -1;
+  float nearest = 19.0f;
+  for (size_t i = 0; i < points_.size(); ++i) {
+    int marker_x{}, marker_y{};
+    screen_position(points_[i], marker_x, marker_y);
+    const float marker_distance = std::hypot(static_cast<float>(x - marker_x),
+                                             static_cast<float>(y - marker_y));
+    if (marker_distance < nearest) {
+      nearest = marker_distance;
+      anchor_drag_index_ = static_cast<int>(i);
+    }
+  }
+  if (anchor_drag_index_ >= 0) {
+    status_ = "Drag anchor " + std::to_string(anchor_drag_index_ + 1);
+    return 1;
+  }
+  float world_x{}, world_z{};
+  world_position(x, y, world_x, world_z);
   add_point_at(world_x, world_z);
   return 1;
 }
@@ -952,6 +1012,57 @@ void RouteEditor::stop_saved_route(size_t index) {
   route.traffic_blocked = false;
   show_instance(route.instance, route.current, route.spin, 0.0f);
   status_ = "Stopped: " + route.label;
+}
+
+void RouteEditor::edit_saved_route(size_t index) {
+  if (state_ != RouteEditorState::Idle || index >= traffic_routes_.size()) return;
+  auto& route = traffic_routes_[index];
+  if (route.anchors.size() < 2) {
+    status_ = "Cannot edit route without two anchors";
+    return;
+  }
+
+  editing_route_id_ = route.id;
+  editing_route_label_ = route.label;
+  editing_existing_route_ = true;
+  editing_route_autostart_ = route.autostart;
+  editing_route_was_running_ = route.running;
+  editing_route_speed_mps_ = route.speed_mps;
+  loop_enabled_ = route.loop;
+  points_ = route.anchors;
+  current_ = points_.front();
+  spin_ = route.spin;
+  display_steering_ = 0.0f;
+  route.running = false;
+  route.current_speed_mps = 0.0f;
+  route.traffic_blocked = false;
+
+  const auto found = std::find(model_ids_.begin(), model_ids_.end(), route.model);
+  selected_model_index_ = found == model_ids_.end()
+                              ? 0
+                              : static_cast<size_t>(std::distance(model_ids_.begin(), found));
+  model_id_ = model_ids_[selected_model_index_];
+  model_label_ = model_labels_[selected_model_index_];
+  recreate_editor_instance();
+
+  float min_x = points_.front().x;
+  float max_x = min_x;
+  float min_z = points_.front().z;
+  float max_z = min_z;
+  for (const auto& point : points_) {
+    min_x = std::min(min_x, point.x);
+    max_x = std::max(max_x, point.x);
+    min_z = std::min(min_z, point.z);
+    max_z = std::max(max_z, point.z);
+  }
+  planner_center_x_ = (min_x + max_x) * 0.5f;
+  planner_center_z_ = (min_z + max_z) * 0.5f;
+  planner_center_y_ = current_.y;
+  const float route_span = std::max(max_x - min_x, max_z - min_z);
+  planner_height_m_ = std::clamp(route_span * 1.15f, 80.0f, 500.0f);
+  state_ = RouteEditorState::Editing;
+  status_ = "Editing route: " + editing_route_label_;
+  open_planner();
 }
 
 float RouteEditor::traffic_speed_limit(const TrafficRoute& route) const {
@@ -1322,18 +1433,35 @@ bool RouteEditor::save() {
     route["routes"].push_back(serialize_route(
         editing_route_id_.empty() ? "bus_route_01" : editing_route_id_,
         editing_route_label_.empty() ? "Apron Bus Route 1" : editing_route_label_,
-        model_id_, loop_enabled_, true, speed_mps_, points_));
+        model_id_, loop_enabled_, editing_route_autostart_,
+        editing_route_speed_mps_, points_));
     std::ofstream output(route_path_);
     output << route.dump(2) << '\n';
     if (!output) throw std::runtime_error("Cannot write route file");
+    const std::string saved_id = editing_route_id_;
     const std::string saved_label = editing_route_label_;
+    const bool resume_manually_started_route =
+        editing_existing_route_ && editing_route_was_running_ &&
+        !editing_route_autostart_;
     load_saved_route();
     for (size_t i = 0; i < traffic_routes_.size(); ++i)
       if (traffic_routes_[i].autostart) start_saved_route(i);
+    if (resume_manually_started_route) {
+      for (size_t i = 0; i < traffic_routes_.size(); ++i) {
+        if (traffic_routes_[i].id == saved_id) {
+          start_saved_route(i);
+          break;
+        }
+      }
+    }
     points_.clear();
     test_points_.clear();
     test_distance_remaining_.clear();
     loop_enabled_ = false;
+    editing_existing_route_ = false;
+    editing_route_autostart_ = true;
+    editing_route_was_running_ = false;
+    editing_route_speed_mps_ = speed_mps_;
     editing_route_id_.clear();
     editing_route_label_.clear();
     state_ = RouteEditorState::Idle;
@@ -1350,11 +1478,17 @@ bool RouteEditor::save() {
 void RouteEditor::cancel() {
   if (state_ == RouteEditorState::Unavailable) return;
   if (planner_active_) close_planner();
+  const std::string cancelled_id = editing_route_id_;
+  const bool resume_route = editing_existing_route_ && editing_route_was_running_;
   points_.clear();
   test_points_.clear();
   test_distance_remaining_.clear();
   return_to_planner_after_test_ = false;
   loop_enabled_ = false;
+  editing_existing_route_ = false;
+  editing_route_autostart_ = true;
+  editing_route_was_running_ = false;
+  editing_route_speed_mps_ = speed_mps_;
   editing_route_id_.clear();
   editing_route_label_.clear();
   handle_drag_anchor_ = -1;
@@ -1362,6 +1496,15 @@ void RouteEditor::cancel() {
   state_ = RouteEditorState::Idle;
   status_ = "Route editor idle";
   recreate_editor_instance();
+  if (resume_route) {
+    for (size_t i = 0; i < traffic_routes_.size(); ++i) {
+      if (traffic_routes_[i].id == cancelled_id) {
+        start_saved_route(i);
+        status_ = "Edit cancelled; route resumed";
+        break;
+      }
+    }
+  }
 }
 
 } // namespace ssa

@@ -1,7 +1,7 @@
 # SSA — Scenery Service Animation
 
 **Developer:** BoldStudio31  
-**Status:** selectable multi-model bus traffic beta 0.15.0  
+**Status:** editable multi-model bus traffic beta 0.16.0  
 **Targets:** X-Plane 11.50+ and X-Plane 12; Windows, Linux and macOS
 
 SSA is a standalone animation controller for scenery objects. It provides custom
@@ -13,7 +13,7 @@ developers. Open it in a browser, choose a scenery folder and OBJ, and copy the
 sanitized `boldstudio31/ssa/animation/scenery/object` dataref into both Blender
 and `ssa.json`.
 
-## Implemented through 0.15.0
+## Implemented through 0.16.0
 
 - Dynamic custom datarefs loaded from each scenery package's `ssa.json`.
 - Smooth open/close animation with configurable speed.
@@ -113,6 +113,14 @@ and `ssa.json`.
 - The supplied example configuration registers `Gapura_bus.obj` and
   `Lion_bus.obj`. Both use the same wheel-spin, steering, dimensions and vehicle
   movement profile, so they can share the existing route physics safely.
+- Every saved route in the TRAFFIC tab has a separate EDIT button. Editing
+  reopens the original automatic/custom Bezier anchors in the top-down planner,
+  restores its bus model and LOOP state, and frames the route in the camera.
+- Existing anchors can be moved with left-click-and-drag while right-drag keeps
+  editing aligned Bezier handles. New clicks still append anchors normally.
+- SAVE replaces the route with the same ID instead of appending a duplicate.
+  CANCEL leaves the stored route unchanged and resumes it when it was running;
+  autostart and manually-started state are preserved across a successful edit.
 - Nearby hangar list (2 km) and small jetway activation radius (35 m).
 - Per-channel automatic jetway targets calculated from aircraft position,
   heading, door profile and scenery-configured movement limits.

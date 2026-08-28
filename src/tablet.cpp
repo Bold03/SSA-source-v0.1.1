@@ -166,6 +166,8 @@ void Tablet::draw_impl() {
                       i + 1, route->label.c_str(), traffic_state,
                       route->loop ? "LOOP" : "ONE WAY", route->cruise_speed_mps * 3.6f);
         label(l + 22, route_y, route_line);
+        button(r - 206, route_y + 12, r - 150, route_y - 16, "EDIT",
+               0.30f, 0.80f, 1.0f);
         button(r - 142, route_y + 12, r - 86, route_y - 16, "START");
         button(r - 78, route_y + 12, r - 22, route_y - 16, "STOP",
                1.0f, 0.72f, 0.20f);
@@ -298,7 +300,8 @@ int Tablet::mouse_impl(int x, int y, XPLMMouseStatus status) {
     const size_t shown = std::min<size_t>(route_editor_.saved_route_count(), 5);
     for (size_t i = 0; i < shown; ++i, route_y -= 44) {
       if (y <= route_y + 12 && y >= route_y - 16) {
-        if (x >= r - 142 && x <= r - 86) route_editor_.start_saved_route(i);
+        if (x >= r - 206 && x <= r - 150) route_editor_.edit_saved_route(i);
+        else if (x >= r - 142 && x <= r - 86) route_editor_.start_saved_route(i);
         else if (x >= r - 78 && x <= r - 22) route_editor_.stop_saved_route(i);
         return 1;
       }

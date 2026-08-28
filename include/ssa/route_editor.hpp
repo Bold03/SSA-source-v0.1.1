@@ -65,6 +65,7 @@ public:
   void toggle_loop();
   void start_saved_route(size_t index);
   void stop_saved_route(size_t index);
+  void edit_saved_route(size_t index);
   void start_all_saved_routes();
   void stop_all_saved_routes();
   void select_model(int direction);
@@ -166,11 +167,16 @@ private:
   bool route_load_pending_{};
   float route_load_delay_seconds_{};
   bool planner_drag_active_{};
+  int anchor_drag_index_{-1};
   int handle_drag_anchor_{-1};
   int planner_drag_x_{};
   int planner_drag_y_{};
   bool return_to_planner_after_test_{};
   bool loop_enabled_{};
+  bool editing_existing_route_{};
+  bool editing_route_autostart_{true};
+  bool editing_route_was_running_{};
+  float editing_route_speed_mps_{4.0f};
   std::string editing_route_id_;
   std::string editing_route_label_;
   size_t test_index_{};
