@@ -44,7 +44,7 @@ void Tablet::toggle() { XPLMSetWindowIsVisible(window_, visible() ? 0 : 1); }
 bool Tablet::visible() const { return window_ && XPLMGetWindowIsVisible(window_) != 0; }
 void Tablet::toggle_developer_mode() {
   developer_mode_ = !developer_mode_;
-  if (!developer_mode_ && tab_ == 4) tab_ = 3;
+  if (!developer_mode_ && (tab_ == 4 || tab_ == 2)) tab_ = 3;
   XPLMSetWindowTitle(window_, developer_mode_
                                  ? "SSA - Scenery Service Animation [DEVELOPER]"
                                  : "SSA - Scenery Service Animation");
@@ -63,13 +63,17 @@ void Tablet::draw_impl() {
   int l, t, r, b;
   XPLMGetWindowGeometry(window_, &l, &t, &r, &b);
   label(l + 22, t - 35, "BOLDSTUDIO31  |  SSA", 0.25f, 0.95f, 0.65f);
-  const char* tabs = "[ HANGAR ]   JETWAY   BUS   SETTINGS";
-  if (tab_ == 1) tabs = "HANGAR   [ JETWAY ]   BUS   SETTINGS";
-  else if (tab_ == 2) tabs = "HANGAR   JETWAY   [ BUS ]   SETTINGS";
+  const char* tabs = developer_mode_
+      ? "[ HANGAR ]  JETWAY  SETTINGS  DEV  TRAFFIC"
+      : "[ HANGAR ]   JETWAY   SETTINGS";
+  if (tab_ == 1) tabs = developer_mode_
+      ? "HANGAR  [ JETWAY ]  SETTINGS  DEV  TRAFFIC"
+      : "HANGAR   [ JETWAY ]   SETTINGS";
+  else if (tab_ == 2) tabs = "HANGAR  JETWAY  SETTINGS  DEV  [ TRAFFIC ]";
   else if (tab_ == 3) tabs = developer_mode_
-      ? "HANGAR   JETWAY   BUS   [ SETTINGS ]   DEV"
-      : "HANGAR   JETWAY   BUS   [ SETTINGS ]";
-  else if (tab_ == 4) tabs = "HANGAR   JETWAY   BUS   SETTINGS   [ DEV ]";
+      ? "HANGAR  JETWAY  [ SETTINGS ]  DEV  TRAFFIC"
+      : "HANGAR   JETWAY   [ SETTINGS ]";
+  else if (tab_ == 4) tabs = "HANGAR  JETWAY  SETTINGS  [ DEV ]  TRAFFIC";
   label(l + 22, t - 70, tabs);
 
   if (tab_ == 3) {
@@ -140,7 +144,7 @@ void Tablet::draw_impl() {
     label(l + 22, t - 105, automatic_ ? "Automatic jetway: ON" : "Automatic jetway: OFF");
     label(l + 22, t - 130, "Turboprop: 0 | Narrow: 1 | Wide: by forward doors");
   } else if (tab_ == 2) {
-    label(l + 22, t - 105, "APRON BUS ROUTES", 0.25f, 0.95f, 0.65f);
+    label(l + 22, t - 105, "BACKGROUND BUS TRAFFIC", 0.25f, 0.95f, 0.65f);
     if (!route_editor_.saved_route_available()) {
       label(l + 22, t - 150, "No saved bus route found.", 1.0f, 0.65f, 0.35f);
       label(l + 22, t - 185, "A scenery developer must create and save a route first.",
@@ -156,12 +160,12 @@ void Tablet::draw_impl() {
                     route_editor_.model_label().c_str(),
                     route_editor_.saved_route_loop() ? "ON" : "OFF");
       label(l + 22, t - 180, model_line, 0.75f, 0.85f, 0.95f);
-      button(l + 22, t - 205, l + 225, t - 245, "START BUS");
-      button(l + 245, t - 205, l + 448, t - 245, "STOP BUS",
+      button(l + 22, t - 205, l + 225, t - 245, "START TRAFFIC");
+      button(l + 245, t - 205, l + 448, t - 245, "STOP TRAFFIC",
              1.0f, 0.72f, 0.20f);
       label(l + 22, t - 280, route_editor_.status().c_str(), 0.75f, 0.85f, 0.95f);
     }
-    label(l + 22, b + 42, "PLAYER MODE | SAVED ROUTE", 0.55f, 0.85f, 0.75f);
+    label(l + 22, b + 42, "DEVELOPER | BACKGROUND TRAFFIC", 0.55f, 0.85f, 0.75f);
     return;
   } else {
     label(l + 22, t - 105, "Nearby hangars (maximum 2 km):");
@@ -226,11 +230,17 @@ int Tablet::mouse_impl(int x, int y, XPLMMouseStatus status) {
     return 1;
   }
   if (y < t - 45 && y > t - 85) {
-    if (developer_mode_ && x > l + 415) tab_ = 4;
-    else if (x < l + 115) tab_ = 0;
-    else if (x < l + 225) tab_ = 1;
-    else if (x < l + 300) tab_ = 2;
-    else tab_ = 3;
+    if (developer_mode_) {
+      if (x < l + 105) tab_ = 0;
+      else if (x < l + 205) tab_ = 1;
+      else if (x < l + 320) tab_ = 3;
+      else if (x < l + 405) tab_ = 4;
+      else tab_ = 2;
+    } else {
+      if (x < l + 135) tab_ = 0;
+      else if (x < l + 260) tab_ = 1;
+      else tab_ = 3;
+    }
     return 1;
   }
   if (tab_ == 3) {

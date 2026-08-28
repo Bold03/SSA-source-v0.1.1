@@ -49,6 +49,7 @@ void RouteEditor::unload() {
   loop_enabled_ = false;
   saved_route_available_ = false;
   saved_loop_enabled_ = false;
+  saved_autostart_ = true;
   runtime_playback_ = false;
   saved_route_label_ = "No saved route";
   current_speed_mps_ = 0.0f;
@@ -107,7 +108,11 @@ bool RouteEditor::load(const std::string& xplane_root) {
         return false;
       }
       state_ = RouteEditorState::Idle;
-      if (!load_saved_route()) status_ = "Ready: " + model_label_ + " | No saved route";
+      if (!load_saved_route()) {
+        status_ = "Ready: " + model_label_ + " | No saved route";
+      } else if (saved_autostart_) {
+        start_saved_route();
+      }
       return true;
     }
   } catch (const std::exception& e) {
@@ -122,6 +127,7 @@ bool RouteEditor::load_saved_route() {
   saved_points_.clear();
   saved_route_available_ = false;
   saved_loop_enabled_ = false;
+  saved_autostart_ = true;
   runtime_playback_ = false;
   if (route_path_.empty() || !fs::exists(route_path_)) return false;
   try {
@@ -168,6 +174,7 @@ bool RouteEditor::load_saved_route() {
     }
     saved_route_label_ = route.value("label", std::string("Apron Bus Route 01"));
     saved_loop_enabled_ = route.value("loop", false);
+    saved_autostart_ = route.value("autostart", true);
     speed_mps_ = std::clamp(route.value("speed_mps", speed_mps_), 0.5f, 15.0f);
     saved_route_available_ = true;
     points_ = saved_points_;
@@ -945,7 +952,8 @@ bool RouteEditor::save() {
     route["routes"] = json::array();
     json item = {{"id", "bus_route_01"}, {"label", "Apron Bus Route 01"},
                  {"model", model_id_}, {"path_type", "bezier"},
-                 {"loop", loop_enabled_}, {"speed_mps", speed_mps_}};
+                 {"loop", loop_enabled_}, {"autostart", true},
+                 {"speed_mps", speed_mps_}};
     item["waypoints"] = json::array();
     for (const auto& point : points_) {
       double latitude{}, longitude{}, altitude{};
@@ -973,6 +981,7 @@ bool RouteEditor::save() {
     if (!output) throw std::runtime_error("Cannot write route file");
     saved_points_ = points_;
     saved_loop_enabled_ = loop_enabled_;
+    saved_autostart_ = true;
     saved_route_label_ = "Apron Bus Route 01";
     saved_route_available_ = true;
     status_ = "Saved: ssa_routes.json";

@@ -55,6 +55,7 @@ public:
   bool saved_route_available() const { return saved_route_available_; }
   bool saved_route_running() const { return runtime_playback_; }
   bool saved_route_loop() const { return saved_loop_enabled_; }
+  bool saved_route_autostart() const { return saved_autostart_; }
   const std::string& saved_route_label() const { return saved_route_label_; }
 
 private:
@@ -116,6 +117,7 @@ private:
   bool loop_enabled_{};
   bool saved_route_available_{};
   bool saved_loop_enabled_{};
+  bool saved_autostart_{true};
   bool runtime_playback_{};
   std::string saved_route_label_{"No saved route"};
   size_t test_index_{};
