@@ -1,14 +1,14 @@
 # SSA — Scenery Service Animation
 
 **Developer:** BoldStudio31  
-**Status:** automatic background bus traffic beta 0.12.1  
+**Status:** automatic background bus traffic beta 0.12.2  
 **Targets:** X-Plane 11.50+ and X-Plane 12; Windows, Linux and macOS
 
 SSA is a standalone animation controller for scenery objects. It provides custom
 datarefs for hangars, jetways, moving vehicles, ground staff and parking
 displays. It does not depend on SAM or AutoGate.
 
-## Implemented through 0.12.1
+## Implemented through 0.12.2
 
 - Dynamic custom datarefs loaded from each scenery package's `ssa.json`.
 - Smooth open/close animation with configurable speed.
@@ -74,6 +74,9 @@ displays. It does not depend on SAM or AutoGate.
 - Saved background routes default to autostart, so traffic runs after scenery
   loading and continues when Developer Mode is disabled. The TRAFFIC tab keeps
   manual START TRAFFIC and STOP TRAFFIC controls for scenery authors.
+- Saved-route coordinate conversion, terrain probing and instance placement are
+  deferred to the flight loop after scenery initialization. No XPLM terrain or
+  instance positioning calls are made from `XPluginStart`.
 - Nearby hangar list (2 km) and small jetway activation radius (35 m).
 - Per-channel automatic jetway targets calculated from aircraft position,
   heading, door profile and scenery-configured movement limits.

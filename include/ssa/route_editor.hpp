@@ -29,6 +29,7 @@ public:
   RouteEditor() = default;
   ~RouteEditor();
   bool load(const std::string& xplane_root);
+  void schedule_saved_route_load();
   void unload();
   void update(float elapsed_seconds);
 
@@ -109,6 +110,8 @@ private:
   float planner_center_y_{};
   float planner_center_z_{};
   bool planner_active_{};
+  bool route_load_pending_{};
+  float route_load_delay_seconds_{};
   bool planner_drag_active_{};
   int handle_drag_anchor_{-1};
   int planner_drag_x_{};

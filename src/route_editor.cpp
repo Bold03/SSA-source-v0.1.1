@@ -40,6 +40,8 @@ void RouteEditor::unload() {
   probe_ = nullptr;
   planner_window_ = nullptr;
   planner_drag_active_ = false;
+  route_load_pending_ = false;
+  route_load_delay_seconds_ = 0.0f;
   handle_drag_anchor_ = -1;
   points_.clear();
   saved_points_.clear();
@@ -108,11 +110,7 @@ bool RouteEditor::load(const std::string& xplane_root) {
         return false;
       }
       state_ = RouteEditorState::Idle;
-      if (!load_saved_route()) {
-        status_ = "Ready: " + model_label_ + " | No saved route";
-      } else if (saved_autostart_) {
-        start_saved_route();
-      }
+      status_ = "Ready: " + model_label_ + " | Waiting for scenery";
       return true;
     }
   } catch (const std::exception& e) {
@@ -121,6 +119,13 @@ bool RouteEditor::load(const std::string& xplane_root) {
   }
   status_ = "Add vehicle_models to ssa.json";
   return false;
+}
+
+void RouteEditor::schedule_saved_route_load() {
+  if (state_ == RouteEditorState::Unavailable || !instance_ || !probe_) return;
+  route_load_pending_ = true;
+  route_load_delay_seconds_ = 0.0f;
+  status_ = "Scenery ready | Loading saved traffic route";
 }
 
 bool RouteEditor::load_saved_route() {
@@ -825,6 +830,17 @@ void RouteEditor::stop_test() {
 
 void RouteEditor::update(float elapsed_seconds) {
   update_planner_drag();
+  if (route_load_pending_) {
+    route_load_delay_seconds_ += std::clamp(elapsed_seconds, 0.0f, 0.25f);
+    if (route_load_delay_seconds_ < 1.0f) return;
+    route_load_pending_ = false;
+    route_load_delay_seconds_ = 0.0f;
+    if (!load_saved_route()) {
+      status_ = "Ready: " + model_label_ + " | No saved route";
+    } else if (saved_autostart_) {
+      start_saved_route();
+    }
+  }
   if (state_ != RouteEditorState::Testing || test_index_ >= test_points_.size()) return;
   elapsed_seconds = std::clamp(elapsed_seconds, 0.0f, 0.10f);
   if (elapsed_seconds <= 0.0f) return;
