@@ -40,6 +40,7 @@ void RouteEditor::unload() {
   probe_ = nullptr;
   planner_window_ = nullptr;
   planner_drag_active_ = false;
+  handle_drag_anchor_ = -1;
   points_.clear();
   test_points_.clear();
   test_distance_remaining_.clear();
@@ -78,6 +79,11 @@ bool RouteEditor::load(const std::string& xplane_root) {
       body_lookahead_m_ = std::clamp(model.value("body_lookahead_m", 6.0f), 1.0f, 12.0f);
       body_heading_response_ =
           std::clamp(model.value("body_heading_response", 1.8f), 0.5f, 8.0f);
+      rear_axle_to_origin_m_ =
+          std::clamp(model.value("rear_axle_to_origin_m", 3.8f), -12.0f, 12.0f);
+      wheelbase_m_ = std::clamp(model.value("wheelbase_m", 7.6f), 1.0f, 15.0f);
+      max_steering_deg_ =
+          std::clamp(model.value("max_steering_deg", 35.0f), 10.0f, 60.0f);
       scenery_directory_ = entry.path().string();
       route_path_ = (entry.path() / "ssa_routes.json").string();
       const fs::path object_path = entry.path() / model.at("object").get<std::string>();
@@ -119,9 +125,10 @@ void RouteEditor::show(float spin, float steering) {
   if (!instance_) return;
   XPLMDrawInfo_t draw{};
   draw.structSize = sizeof(draw);
-  draw.x = current_.x;
+  const float physical_heading = current_.heading * pi / 180.0f;
+  draw.x = current_.x + std::sin(physical_heading) * rear_axle_to_origin_m_;
   draw.y = current_.y;
-  draw.z = current_.z;
+  draw.z = current_.z - std::cos(physical_heading) * rear_axle_to_origin_m_;
   draw.heading = normalize_heading(current_.heading + heading_offset_deg_);
   const float data[] = {spin, std::clamp(steering * steering_multiplier_, -1.0f, 1.0f)};
   XPLMInstanceSetPosition(instance_, &draw, data);
@@ -166,6 +173,7 @@ void RouteEditor::open_planner() {
     params.visible = 1;
     params.drawWindowFunc = planner_draw;
     params.handleMouseClickFunc = planner_mouse_cb;
+    params.handleRightClickFunc = planner_right_mouse_cb;
     params.handleKeyFunc = planner_key;
     params.handleCursorFunc = planner_cursor;
     params.handleMouseWheelFunc = planner_wheel_cb;
@@ -192,6 +200,7 @@ void RouteEditor::close_planner() {
   if (!planner_active_) return;
   planner_active_ = false;
   planner_drag_active_ = false;
+  handle_drag_anchor_ = -1;
   if (planner_window_) XPLMSetWindowIsVisible(planner_window_, 0);
   XPLMDontControlCamera();
   if (state_ == RouteEditorState::Planning) state_ = RouteEditorState::Editing;
@@ -228,7 +237,8 @@ void RouteEditor::draw_planner() {
   float title_color[] = {0.25f, 0.95f, 0.65f};
   float marker_color[] = {1.0f, 0.72f, 0.20f};
   float route_color[] = {0.55f, 1.0f, 0.70f};
-  char title[] = "SSA BEZIER ROUTE | CLICK: ADD ANCHOR | SHIFT+MMB / D-PAD: PAN | WHEEL: ZOOM";
+  float handle_color[] = {0.30f, 0.80f, 1.0f};
+  char title[] = "SSA BEZIER ROUTE | CLICK: ADD | RMB HOLD+DRAG ANCHOR: CURVE | SHIFT+MMB: PAN";
   XPLMDrawString(title_color, left + 24, top - 30, title, nullptr,
                  xplmFont_Proportional);
   auto draw_button = [&](int button_left, int button_top, int button_right,
@@ -245,7 +255,12 @@ void RouteEditor::draw_planner() {
   draw_button(right - 140, top - 124, right - 104, top - 152, "<");
   draw_button(right - 100, top - 124, right - 64, top - 152, "v");
   draw_button(right - 60, top - 124, right - 24, top - 152, ">");
-  draw_button(right - 180, top - 180, right - 24, top - 212, "PATH: BEZIER AUTO");
+  const bool has_custom_handles = std::any_of(
+      points_.begin(), points_.end(), [](const RoutePoint& point) {
+        return point.custom_handles;
+      });
+  draw_button(right - 180, top - 180, right - 24, top - 212,
+              has_custom_handles ? "PATH: BEZIER CUSTOM" : "PATH: BEZIER AUTO");
   draw_button(right - 180, top - 220, right - 24, top - 252,
               loop_enabled_ ? "LOOP: ON" : "LOOP: OFF");
   const float width = static_cast<float>(std::max(1, right - left));
@@ -272,6 +287,41 @@ void RouteEditor::draw_planner() {
         last_y = y;
       }
     }
+  }
+  auto draw_dotted_handle = [&](const RoutePoint& a, const RoutePoint& b) {
+    int ax{}, ay{}, bx{}, by{};
+    screen(a, ax, ay);
+    screen(b, bx, by);
+    const float pixels = std::hypot(static_cast<float>(bx - ax),
+                                    static_cast<float>(by - ay));
+    const int steps = std::max(1, static_cast<int>(pixels / 9.0f));
+    for (int step = 0; step <= steps; ++step) {
+      if ((step & 1) != 0) continue;
+      const float t = static_cast<float>(step) / static_cast<float>(steps);
+      char dot[] = ".";
+      XPLMDrawString(handle_color,
+                     static_cast<int>(ax + (bx - ax) * t),
+                     static_cast<int>(ay + (by - ay) * t), dot, nullptr,
+                     xplmFont_Proportional);
+    }
+  };
+  for (const auto& point : points_) {
+    if (!point.custom_handles) continue;
+    RoutePoint handle_in = point;
+    RoutePoint handle_out = point;
+    handle_in.x += point.handle_in_x;
+    handle_in.z += point.handle_in_z;
+    handle_out.x += point.handle_out_x;
+    handle_out.z += point.handle_out_z;
+    draw_dotted_handle(handle_in, handle_out);
+    int in_x{}, in_y{}, out_x{}, out_y{};
+    screen(handle_in, in_x, in_y);
+    screen(handle_out, out_x, out_y);
+    char handle[] = "o";
+    XPLMDrawString(handle_color, in_x - 3, in_y, handle, nullptr,
+                   xplmFont_Proportional);
+    XPLMDrawString(handle_color, out_x - 3, out_y, handle, nullptr,
+                   xplmFont_Proportional);
   }
   for (size_t i = 0; i < points_.size(); ++i) {
     int sx{}, sy{};
@@ -340,6 +390,64 @@ int RouteEditor::planner_mouse(int x, int y, XPLMMouseStatus status) {
   const float world_z = planner_center_z_ -
                         ((y - bottom) / height * 2.0f - 1.0f) * half_height_m;
   add_point_at(world_x, world_z);
+  return 1;
+}
+
+int RouteEditor::planner_right_mouse_cb(XPLMWindowID, int x, int y,
+                                        XPLMMouseStatus status, void* refcon) {
+  return static_cast<RouteEditor*>(refcon)->planner_right_mouse(x, y, status);
+}
+
+int RouteEditor::planner_right_mouse(int x, int y, XPLMMouseStatus status) {
+  if (!planner_active_ || !planner_window_) return 1;
+  if (status == xplm_MouseUp) {
+    if (handle_drag_anchor_ >= 0)
+      status_ = "Bezier handle saved; right-drag again to adjust";
+    handle_drag_anchor_ = -1;
+    return 1;
+  }
+  int left{}, top{}, right{}, bottom{};
+  XPLMGetWindowGeometry(planner_window_, &left, &top, &right, &bottom);
+  const float width = static_cast<float>(std::max(1, right - left));
+  const float height = static_cast<float>(std::max(1, top - bottom));
+  const float half_width_m = planner_half_width();
+  const float half_height_m = half_width_m * height / width;
+  auto screen = [&](const RoutePoint& point, int& sx, int& sy) {
+    sx = static_cast<int>(left + width * 0.5f +
+                          (point.x - planner_center_x_) / half_width_m * width * 0.5f);
+    sy = static_cast<int>(bottom + height * 0.5f -
+                          (point.z - planner_center_z_) / half_height_m * height * 0.5f);
+  };
+  if (status == xplm_MouseDown) {
+    handle_drag_anchor_ = -1;
+    float nearest = 19.0f;
+    for (size_t i = 0; i < points_.size(); ++i) {
+      int sx{}, sy{};
+      screen(points_[i], sx, sy);
+      const float distance = std::hypot(static_cast<float>(x - sx),
+                                        static_cast<float>(y - sy));
+      if (distance < nearest) {
+        nearest = distance;
+        handle_drag_anchor_ = static_cast<int>(i);
+      }
+    }
+    if (handle_drag_anchor_ < 0) status_ = "Right-click directly on an anchor";
+    return 1;
+  }
+  if (status != xplm_MouseDrag || handle_drag_anchor_ < 0 ||
+      static_cast<size_t>(handle_drag_anchor_) >= points_.size()) return 1;
+  const float world_x = planner_center_x_ +
+                        ((x - left) / width * 2.0f - 1.0f) * half_width_m;
+  const float world_z = planner_center_z_ -
+                        ((y - bottom) / height * 2.0f - 1.0f) * half_height_m;
+  auto& point = points_[static_cast<size_t>(handle_drag_anchor_)];
+  point.handle_out_x = world_x - point.x;
+  point.handle_out_z = world_z - point.z;
+  point.handle_in_x = -point.handle_out_x;
+  point.handle_in_z = -point.handle_out_z;
+  point.custom_handles = true;
+  build_bezier_path();
+  status_ = "Adjusting aligned Bezier handle";
   return 1;
 }
 
@@ -499,12 +607,16 @@ void RouteEditor::build_bezier_path() {
     const auto& p1 = anchor(static_cast<long long>(segment));
     const auto& p2 = anchor(static_cast<long long>(segment) + 1);
     const auto& p3 = anchor(static_cast<long long>(segment) + 2);
-    const float c1x = p1.x + (p2.x - p0.x) / 6.0f;
+    const float c1x = p1.custom_handles ? p1.x + p1.handle_out_x
+                                        : p1.x + (p2.x - p0.x) / 6.0f;
     const float c1y = p1.y + (p2.y - p0.y) / 6.0f;
-    const float c1z = p1.z + (p2.z - p0.z) / 6.0f;
-    const float c2x = p2.x - (p3.x - p1.x) / 6.0f;
+    const float c1z = p1.custom_handles ? p1.z + p1.handle_out_z
+                                        : p1.z + (p2.z - p0.z) / 6.0f;
+    const float c2x = p2.custom_handles ? p2.x + p2.handle_in_x
+                                        : p2.x - (p3.x - p1.x) / 6.0f;
     const float c2y = p2.y - (p3.y - p1.y) / 6.0f;
-    const float c2z = p2.z - (p3.z - p1.z) / 6.0f;
+    const float c2z = p2.custom_handles ? p2.z + p2.handle_in_z
+                                        : p2.z - (p3.z - p1.z) / 6.0f;
     const float chord = std::hypot(p2.x - p1.x, p2.z - p1.z);
     if (chord < 0.01f) continue;
     const int steps = std::max(4, static_cast<int>(std::ceil(chord / 0.35f)));
@@ -693,7 +805,11 @@ void RouteEditor::update(float elapsed_seconds) {
   }
   spin_ += travelled / 3.0f;
   spin_ -= std::floor(spin_);
-  float target_steering = std::clamp(route_curve / 28.0f, -1.0f, 1.0f);
+  const float curvature = (route_curve * pi / 180.0f) /
+                          std::max(lookahead_distance, 0.5f);
+  const float steering_angle = std::atan(wheelbase_m_ * curvature) * 180.0f / pi;
+  float target_steering =
+      std::clamp(steering_angle / max_steering_deg_, -1.0f, 1.0f);
   if (std::abs(route_curve) < 0.8f) target_steering = 0.0f;
   const float steering_blend = 1.0f - std::exp(-6.0f * elapsed_seconds);
   display_steering_ += (target_steering - display_steering_) * steering_blend;
@@ -714,14 +830,28 @@ bool RouteEditor::save() {
     route["schema"] = 1;
     route["routes"] = json::array();
     json item = {{"id", "bus_route_01"}, {"label", "Apron Bus Route 01"},
-                 {"model", model_id_}, {"path_type", "bezier_auto"},
+                 {"model", model_id_}, {"path_type", "bezier"},
                  {"loop", loop_enabled_}, {"speed_mps", speed_mps_}};
     item["waypoints"] = json::array();
     for (const auto& point : points_) {
       double latitude{}, longitude{}, altitude{};
       XPLMLocalToWorld(point.x, point.y, point.z, &latitude, &longitude, &altitude);
-      item["waypoints"].push_back({{"latitude", latitude}, {"longitude", longitude},
-                                     {"heading", point.heading}, {"kind", "bezier_anchor"}});
+      json waypoint = {{"latitude", latitude}, {"longitude", longitude},
+                       {"heading", point.heading}, {"kind", "bezier_anchor"},
+                       {"handle_mode", point.custom_handles ? "aligned" : "auto"}};
+      if (point.custom_handles) {
+        double in_lat{}, in_lon{}, in_alt{};
+        double out_lat{}, out_lon{}, out_alt{};
+        XPLMLocalToWorld(point.x + point.handle_in_x, point.y,
+                         point.z + point.handle_in_z, &in_lat, &in_lon, &in_alt);
+        XPLMLocalToWorld(point.x + point.handle_out_x, point.y,
+                         point.z + point.handle_out_z, &out_lat, &out_lon, &out_alt);
+        waypoint["handle_in_latitude"] = in_lat;
+        waypoint["handle_in_longitude"] = in_lon;
+        waypoint["handle_out_latitude"] = out_lat;
+        waypoint["handle_out_longitude"] = out_lon;
+      }
+      item["waypoints"].push_back(std::move(waypoint));
     }
     route["routes"].push_back(std::move(item));
     std::ofstream output(route_path_);
@@ -743,6 +873,7 @@ void RouteEditor::cancel() {
   test_distance_remaining_.clear();
   return_to_planner_after_test_ = false;
   loop_enabled_ = false;
+  handle_drag_anchor_ = -1;
   current_speed_mps_ = 0.0f;
   state_ = RouteEditorState::Idle;
   status_ = "Route editor idle";

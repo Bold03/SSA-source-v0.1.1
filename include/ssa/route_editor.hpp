@@ -17,6 +17,11 @@ struct RoutePoint {
   float y{};
   float z{};
   float heading{};
+  float handle_in_x{};
+  float handle_in_z{};
+  float handle_out_x{};
+  float handle_out_z{};
+  bool custom_handles{};
 };
 
 class RouteEditor {
@@ -56,11 +61,14 @@ private:
   void close_planner();
   void draw_planner();
   int planner_mouse(int x, int y, XPLMMouseStatus status);
+  int planner_right_mouse(int x, int y, XPLMMouseStatus status);
   int planner_wheel(int x, int y, int wheel, int clicks);
   float planner_half_width() const;
   static void planner_draw(XPLMWindowID, void* refcon);
   static int planner_mouse_cb(XPLMWindowID, int x, int y, XPLMMouseStatus status,
                               void* refcon);
+  static int planner_right_mouse_cb(XPLMWindowID, int x, int y,
+                                    XPLMMouseStatus status, void* refcon);
   static void planner_key(XPLMWindowID, char, XPLMKeyFlags, char, void*, int);
   static XPLMCursorStatus planner_cursor(XPLMWindowID, int, int, void*);
   static int planner_wheel_cb(XPLMWindowID, int x, int y, int wheel, int clicks,
@@ -82,6 +90,9 @@ private:
   float steering_multiplier_{-1.0f};
   float body_lookahead_m_{6.0f};
   float body_heading_response_{1.8f};
+  float rear_axle_to_origin_m_{3.8f};
+  float wheelbase_m_{7.6f};
+  float max_steering_deg_{35.0f};
   float spin_{};
   float current_speed_mps_{};
   float display_steering_{};
@@ -91,6 +102,7 @@ private:
   float planner_center_z_{};
   bool planner_active_{};
   bool planner_drag_active_{};
+  int handle_drag_anchor_{-1};
   int planner_drag_x_{};
   int planner_drag_y_{};
   bool return_to_planner_after_test_{};

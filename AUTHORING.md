@@ -15,6 +15,9 @@ Add a vehicle model entry at the top level of `ssa.json`:
     "steering_multiplier": -1.0,
     "body_lookahead_m": 6.0,
     "body_heading_response": 1.8,
+    "rear_axle_to_origin_m": 3.8,
+    "wheelbase_m": 7.6,
+    "max_steering_deg": 35.0,
     "speed_mps": 4.0,
     "acceleration_mps2": 1.5,
     "braking_mps2": 2.5
@@ -31,10 +34,12 @@ boldstudio31/ssa/vehicle/steering    (-1..0..1, no loop)
 
 In X-Plane, open the SSA tablet, enable Developer Mode under Settings and open
 the DEV tab. Start the top-down planner at the aircraft, click the apron to add
-numbered automatic Bezier anchors, use Shift + middle-mouse drag on Windows or
+numbered automatic Bezier anchors. Right-click and hold an anchor, then drag to
+create an aligned custom Bezier handle like a graphics Pen Tool. Use Shift +
+middle-mouse drag on Windows or
 the on-screen direction pad to pan and the mouse wheel to zoom, then test or save
 from the boxed overlay toolbar. SSA calculates cubic Bezier handles from the
-neighbouring anchors, so no smoothing-level control is required. LOOP ON joins
+neighbouring anchors until a custom handle is dragged. LOOP ON joins
 the final anchor to the first and requires at least three anchors. STOP TEST
 returns to the same planning view. `steering_multiplier` reverses an OBJ whose
 front-wheel animation faces the wrong direction. SSA writes `ssa_routes.json`
@@ -44,6 +49,12 @@ beside the scenery's `ssa.json`.
 heading; a longer distance suppresses small left/right corrections. The
 `body_heading_response` value controls how quickly the body rotates toward that
 heading. The Gapura bus defaults to 6 metres and 1.8 respectively.
+
+The route itself is the rear-axle path, not the bus-body origin path. Set
+`rear_axle_to_origin_m` to the forward distance from the rear axle to the OBJ
+origin. `wheelbase_m` and `max_steering_deg` drive the front-wheel steering from
+the route curvature, so the rear wheels stay on the line while the nose swings
+naturally through a corner.
 
 Vehicle instances update every simulator frame. `acceleration_mps2` and
 `braking_mps2` control traffic-style speed changes; the default bus accelerates
