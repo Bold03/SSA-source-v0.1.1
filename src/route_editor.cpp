@@ -35,7 +35,8 @@ void RouteEditor::unload() {
   if (instance_) XPLMDestroyInstance(instance_);
   for (auto& route : traffic_routes_)
     if (route.instance) XPLMDestroyInstance(route.instance);
-  if (object_) XPLMUnloadObject(object_);
+  for (auto object : model_objects_)
+    if (object) XPLMUnloadObject(object);
   if (probe_) XPLMDestroyProbe(probe_);
   instance_ = nullptr;
   object_ = nullptr;
@@ -46,6 +47,10 @@ void RouteEditor::unload() {
   route_load_delay_seconds_ = 0.0f;
   handle_drag_anchor_ = -1;
   points_.clear();
+  model_ids_.clear();
+  model_labels_.clear();
+  model_objects_.clear();
+  selected_model_index_ = 0;
   traffic_routes_.clear();
   test_points_.clear();
   test_distance_remaining_.clear();
@@ -74,8 +79,6 @@ bool RouteEditor::load(const std::string& xplane_root) {
       if (!root.contains("vehicle_models") || !root.at("vehicle_models").is_array() ||
           root.at("vehicle_models").empty()) continue;
       const auto& model = root.at("vehicle_models").front();
-      model_id_ = model.value("id", "gapura_bus");
-      model_label_ = model.value("label", model_id_);
       ground_offset_m_ = model.value("ground_offset_m", 0.445f);
       speed_mps_ = std::clamp(model.value("speed_mps", 4.0f), 0.5f, 15.0f);
       acceleration_mps2_ =
@@ -115,12 +118,28 @@ bool RouteEditor::load(const std::string& xplane_root) {
           model.value("collision_lane_half_width_m", 3.5f), 1.0f, 10.0f);
       scenery_directory_ = entry.path().string();
       route_path_ = (entry.path() / "ssa_routes.json").string();
-      const fs::path object_path = entry.path() / model.at("object").get<std::string>();
-      object_ = XPLMLoadObject(object_path.string().c_str());
-      if (!object_) {
-        status_ = "Cannot load " + object_path.filename().string();
+      for (const auto& configured_model : root.at("vehicle_models")) {
+        if (!configured_model.contains("object")) continue;
+        const std::string id = configured_model.value(
+            "id", std::string("vehicle_") + std::to_string(model_ids_.size() + 1));
+        if (std::find(model_ids_.begin(), model_ids_.end(), id) != model_ids_.end())
+          continue;
+        const fs::path object_path =
+            entry.path() / configured_model.at("object").get<std::string>();
+        XPLMObjectRef loaded_object = XPLMLoadObject(object_path.string().c_str());
+        if (!loaded_object) continue;
+        model_ids_.push_back(id);
+        model_labels_.push_back(configured_model.value("label", id));
+        model_objects_.push_back(loaded_object);
+      }
+      if (model_objects_.empty()) {
+        status_ = "Cannot load any configured vehicle OBJ";
         return false;
       }
+      selected_model_index_ = 0;
+      model_id_ = model_ids_.front();
+      model_label_ = model_labels_.front();
+      object_ = model_objects_.front();
       const char* datarefs[] = {"boldstudio31/ssa/vehicle/wheel_spin",
                                 "boldstudio31/ssa/vehicle/steering", nullptr};
       instance_ = XPLMCreateInstance(object_, datarefs);
@@ -135,7 +154,9 @@ bool RouteEditor::load(const std::string& xplane_root) {
       return true;
     }
   } catch (const std::exception& e) {
-    status_ = e.what();
+    const std::string message = e.what();
+    unload();
+    status_ = message;
     return false;
   }
   status_ = "Add vehicle_models to ssa.json";
@@ -164,8 +185,7 @@ bool RouteEditor::load_saved_route() {
     size_t fallback_number = 1;
     for (const auto& route_json : root.at("routes")) {
       if (traffic_routes_.size() >= 16) break;
-      if (route_json.value("model", model_id_) != model_id_ ||
-          !route_json.contains("waypoints") ||
+      if (!route_json.contains("waypoints") ||
           !route_json.at("waypoints").is_array()) continue;
       TrafficRoute route;
       char fallback_id[32];
@@ -173,7 +193,12 @@ bool RouteEditor::load_saved_route() {
       route.id = route_json.value("id", std::string(fallback_id));
       route.label = route_json.value(
           "label", std::string("Apron Bus Route ") + std::to_string(fallback_number));
-      route.model = model_id_;
+      route.model = route_json.value("model", model_ids_.front());
+      XPLMObjectRef route_object = object_for_model(route.model);
+      if (!route_object) {
+        route.model = model_ids_.front();
+        route_object = model_objects_.front();
+      }
       route.loop = route_json.value("loop", false);
       route.autostart = route_json.value("autostart", true);
       route.speed_mps = std::clamp(route_json.value("speed_mps", speed_mps_), 0.5f, 15.0f);
@@ -214,7 +239,7 @@ bool RouteEditor::load_saved_route() {
                                      ? 0.0f : route.distance_remaining.front();
       route.cruise_speed_mps = adaptive_speed(route.speed_mps, route_length);
       route.current = route.path.front();
-      route.instance = XPLMCreateInstance(object_, datarefs);
+      route.instance = XPLMCreateInstance(route_object, datarefs);
       if (!route.instance) continue;
       show_instance(route.instance, route.current, 0.0f, 0.0f);
       traffic_routes_.push_back(std::move(route));
@@ -243,6 +268,37 @@ float RouteEditor::terrain_y(float x, float z, float fallback) const {
 
 void RouteEditor::show(float spin, float steering) {
   show_instance(instance_, current_, spin, steering);
+}
+
+XPLMObjectRef RouteEditor::object_for_model(const std::string& id) const {
+  const auto found = std::find(model_ids_.begin(), model_ids_.end(), id);
+  if (found == model_ids_.end()) return nullptr;
+  const size_t index = static_cast<size_t>(std::distance(model_ids_.begin(), found));
+  return index < model_objects_.size() ? model_objects_[index] : nullptr;
+}
+
+void RouteEditor::recreate_editor_instance() {
+  if (instance_) XPLMDestroyInstance(instance_);
+  instance_ = nullptr;
+  if (selected_model_index_ >= model_objects_.size()) return;
+  object_ = model_objects_[selected_model_index_];
+  const char* datarefs[] = {"boldstudio31/ssa/vehicle/wheel_spin",
+                            "boldstudio31/ssa/vehicle/steering", nullptr};
+  instance_ = XPLMCreateInstance(object_, datarefs);
+  if (instance_ && !points_.empty()) show(spin_, display_steering_);
+}
+
+void RouteEditor::select_model(int direction) {
+  if (state_ == RouteEditorState::Unavailable || state_ == RouteEditorState::Testing ||
+      model_objects_.empty() || direction == 0) return;
+  const int count = static_cast<int>(model_objects_.size());
+  int selected = static_cast<int>(selected_model_index_);
+  selected = (selected + (direction > 0 ? 1 : -1) + count) % count;
+  selected_model_index_ = static_cast<size_t>(selected);
+  model_id_ = model_ids_[selected_model_index_];
+  model_label_ = model_labels_[selected_model_index_];
+  recreate_editor_instance();
+  status_ = "Selected bus: " + model_label_;
 }
 
 float RouteEditor::adaptive_speed(float base_speed, float route_length) const {
@@ -434,6 +490,11 @@ void RouteEditor::draw_planner() {
               has_custom_handles ? "PATH: BEZIER CUSTOM" : "PATH: BEZIER AUTO");
   draw_button(right - 180, top - 220, right - 24, top - 252,
               loop_enabled_ ? "LOOP: ON" : "LOOP: OFF");
+  char model_button[96];
+  std::snprintf(model_button, sizeof(model_button), "BUS: %.20s", model_label_.c_str());
+  draw_button(right - 220, top - 260, right - 24, top - 292, model_button);
+  draw_button(right - 220, top - 300, right - 126, top - 332, "< PREV");
+  draw_button(right - 118, top - 300, right - 24, top - 332, "NEXT >");
   const float width = static_cast<float>(std::max(1, right - left));
   const float height = static_cast<float>(std::max(1, top - bottom));
   const float half_width_m = planner_half_width();
@@ -549,7 +610,12 @@ int RouteEditor::planner_mouse(int x, int y, XPLMMouseStatus status) {
     if (x >= right - 180 && x <= right - 24) toggle_loop();
     return 1;
   }
-  if (x >= right - 190 && y <= top - 170 && y >= top - 260) return 1;
+  if (y >= top - 332 && y <= top - 300) {
+    if (x >= right - 220 && x <= right - 126) select_model(-1);
+    else if (x >= right - 118 && x <= right - 24) select_model(1);
+    return 1;
+  }
+  if (x >= right - 230 && y <= top - 170 && y >= top - 340) return 1;
   // Keep the title/toolbar band from accidentally creating an anchor.
   if (y > top - 90) return 1;
   const float width = static_cast<float>(std::max(1, right - left));
@@ -1214,9 +1280,10 @@ bool RouteEditor::save() {
   }
   try {
     auto serialize_route = [&](const std::string& id, const std::string& label,
-                               bool loop, bool autostart, float route_speed,
+                               const std::string& route_model, bool loop,
+                               bool autostart, float route_speed,
                                const std::vector<RoutePoint>& anchors) {
-      json item = {{"id", id}, {"label", label}, {"model", model_id_},
+      json item = {{"id", id}, {"label", label}, {"model", route_model},
                    {"path_type", "bezier"}, {"loop", loop},
                    {"autostart", autostart}, {"speed_mps", route_speed}};
       item["waypoints"] = json::array();
@@ -1243,18 +1310,19 @@ bool RouteEditor::save() {
       return item;
     };
     json route;
-    route["schema"] = 2;
+    route["schema"] = 3;
     route["routes"] = json::array();
     for (const auto& existing : traffic_routes_) {
       if (existing.id == editing_route_id_) continue;
       route["routes"].push_back(serialize_route(
-          existing.id, existing.label, existing.loop, existing.autostart,
+          existing.id, existing.label, existing.model, existing.loop,
+          existing.autostart,
           existing.speed_mps, existing.anchors));
     }
     route["routes"].push_back(serialize_route(
         editing_route_id_.empty() ? "bus_route_01" : editing_route_id_,
         editing_route_label_.empty() ? "Apron Bus Route 1" : editing_route_label_,
-        loop_enabled_, true, speed_mps_, points_));
+        model_id_, loop_enabled_, true, speed_mps_, points_));
     std::ofstream output(route_path_);
     output << route.dump(2) << '\n';
     if (!output) throw std::runtime_error("Cannot write route file");
@@ -1269,10 +1337,7 @@ bool RouteEditor::save() {
     editing_route_id_.clear();
     editing_route_label_.clear();
     state_ = RouteEditorState::Idle;
-    if (instance_) XPLMDestroyInstance(instance_);
-    const char* datarefs[] = {"boldstudio31/ssa/vehicle/wheel_spin",
-                              "boldstudio31/ssa/vehicle/steering", nullptr};
-    instance_ = XPLMCreateInstance(object_, datarefs);
+    recreate_editor_instance();
     status_ = "Saved " + saved_label + " | " +
               std::to_string(traffic_routes_.size()) + " route(s) total";
     return true;
@@ -1296,12 +1361,7 @@ void RouteEditor::cancel() {
   current_speed_mps_ = 0.0f;
   state_ = RouteEditorState::Idle;
   status_ = "Route editor idle";
-  if (instance_) {
-    XPLMDestroyInstance(instance_);
-    const char* datarefs[] = {"boldstudio31/ssa/vehicle/wheel_spin",
-                              "boldstudio31/ssa/vehicle/steering", nullptr};
-    instance_ = XPLMCreateInstance(object_, datarefs);
-  }
+  recreate_editor_instance();
 }
 
 } // namespace ssa

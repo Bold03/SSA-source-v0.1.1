@@ -28,6 +28,11 @@
       "collision_detection_m": 40.0,
       "collision_stop_distance_m": 13.0,
       "collision_lane_half_width_m": 3.5
+    },
+    {
+      "id": "lion_bus",
+      "label": "Lion Apron Bus",
+      "object": "object/Lion_bus.obj"
     }
   ],
   "objects": [

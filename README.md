@@ -1,7 +1,7 @@
 # SSA — Scenery Service Animation
 
 **Developer:** BoldStudio31  
-**Status:** collision-aware multi-route traffic beta 0.14.0  
+**Status:** selectable multi-model bus traffic beta 0.15.0  
 **Targets:** X-Plane 11.50+ and X-Plane 12; Windows, Linux and macOS
 
 SSA is a standalone animation controller for scenery objects. It provides custom
@@ -13,7 +13,7 @@ developers. Open it in a browser, choose a scenery folder and OBJ, and copy the
 sanitized `boldstudio31/ssa/animation/scenery/object` dataref into both Blender
 and `ssa.json`.
 
-## Implemented through 0.14.0
+## Implemented through 0.15.0
 
 - Dynamic custom datarefs loaded from each scenery package's `ssa.json`.
 - Smooth open/close animation with configurable speed.
@@ -82,8 +82,7 @@ and `ssa.json`.
 - Saved-route coordinate conversion, terrain probing and instance placement are
   deferred to the flight loop after scenery initialization. No XPLM terrain or
   instance positioning calls are made from `XPluginStart`.
-- One scenery can store and run up to sixteen background bus routes using the
-  currently configured bus model. Every
+- One scenery can store and run up to sixteen background bus routes. Every
   route owns an independent X-Plane instance, path cursor, speed, steering,
   wheel spin, LOOP and autostart state.
 - Saving a newly planned route appends the next available `bus_route_XX`
@@ -106,6 +105,14 @@ and `ssa.json`.
 - The TRAFFIC tab reports `WAITING` while collision avoidance is holding a bus.
   Detection distance, stopping separation and lane width are configurable per
   vehicle model in `ssa.json`.
+- Every entry in `vehicle_models` is loaded as an available bus model. The
+  top-down Create Route panel provides visible PREV/NEXT controls, replaces the
+  preview instance immediately, and writes the selected model ID into that
+  route. Saved routes restore their own Gapura, Lion, or future compatible OBJ
+  even when Developer Mode is disabled.
+- The supplied example configuration registers `Gapura_bus.obj` and
+  `Lion_bus.obj`. Both use the same wheel-spin, steering, dimensions and vehicle
+  movement profile, so they can share the existing route physics safely.
 - Nearby hangar list (2 km) and small jetway activation radius (35 m).
 - Per-channel automatic jetway targets calculated from aircraft position,
   heading, door profile and scenery-configured movement limits.

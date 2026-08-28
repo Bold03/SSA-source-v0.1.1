@@ -67,6 +67,7 @@ public:
   void stop_saved_route(size_t index);
   void start_all_saved_routes();
   void stop_all_saved_routes();
+  void select_model(int direction);
   void cancel();
   bool save();
 
@@ -76,6 +77,7 @@ public:
   size_t point_count() const { return points_.size(); }
   float heading() const { return current_.heading; }
   bool loop_enabled() const { return loop_enabled_; }
+  size_t model_count() const { return model_ids_.size(); }
   bool saved_route_available() const { return !traffic_routes_.empty(); }
   size_t saved_route_count() const { return traffic_routes_.size(); }
   const TrafficRoute* saved_route(size_t index) const {
@@ -95,6 +97,8 @@ private:
                          std::vector<float>& distance_remaining);
   void update_traffic_route(TrafficRoute& route, float elapsed_seconds);
   float traffic_speed_limit(const TrafficRoute& route) const;
+  XPLMObjectRef object_for_model(const std::string& id) const;
+  void recreate_editor_instance();
   float adaptive_speed(float base_speed, float route_length) const;
   float upcoming_turn_degrees(const std::vector<RoutePoint>& path, size_t index,
                               bool loop, float preview_distance) const;
@@ -121,6 +125,10 @@ private:
   RouteEditorState state_{RouteEditorState::Unavailable};
   std::string model_id_;
   std::string model_label_;
+  std::vector<std::string> model_ids_;
+  std::vector<std::string> model_labels_;
+  std::vector<XPLMObjectRef> model_objects_;
+  size_t selected_model_index_{};
   std::string scenery_directory_;
   std::string route_path_;
   std::string status_{"No vehicle model configured"};
