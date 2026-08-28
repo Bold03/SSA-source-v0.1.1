@@ -35,7 +35,7 @@ public:
   void undo_point();
   void start_test();
   void stop_test();
-  void adjust_curve(int delta);
+  void toggle_loop();
   void cancel();
   bool save();
 
@@ -44,12 +44,13 @@ public:
   const std::string& status() const { return status_; }
   size_t point_count() const { return points_.size(); }
   float heading() const { return current_.heading; }
+  bool loop_enabled() const { return loop_enabled_; }
 
 private:
   float terrain_y(float x, float z, float fallback) const;
   void show(float spin, float steering);
   void add_point_at(float x, float z);
-  void build_smooth_test_path();
+  void build_bezier_path();
   void update_planner_drag();
   void open_planner();
   void close_planner();
@@ -77,9 +78,8 @@ private:
   float speed_mps_{4.0f};
   float heading_offset_deg_{180.0f};
   float steering_multiplier_{-1.0f};
-  float body_lookahead_m_{4.0f};
-  float body_heading_response_{2.2f};
-  int smoothing_iterations_{3};
+  float body_lookahead_m_{6.0f};
+  float body_heading_response_{1.8f};
   float spin_{};
   float display_steering_{};
   float planner_height_m_{160.0f};
@@ -91,6 +91,7 @@ private:
   int planner_drag_x_{};
   int planner_drag_y_{};
   bool return_to_planner_after_test_{};
+  bool loop_enabled_{};
   size_t test_index_{};
   RoutePoint current_{};
   std::vector<RoutePoint> points_;

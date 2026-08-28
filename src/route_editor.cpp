@@ -43,6 +43,7 @@ void RouteEditor::unload() {
   points_.clear();
   test_points_.clear();
   return_to_planner_after_test_ = false;
+  loop_enabled_ = false;
   state_ = RouteEditorState::Unavailable;
 }
 
@@ -69,10 +70,9 @@ bool RouteEditor::load(const std::string& xplane_root) {
       speed_mps_ = std::clamp(model.value("speed_mps", 4.0f), 0.5f, 15.0f);
       heading_offset_deg_ = model.value("heading_offset_deg", 180.0f);
       steering_multiplier_ = model.value("steering_multiplier", -1.0f);
-      body_lookahead_m_ = std::clamp(model.value("body_lookahead_m", 4.0f), 1.0f, 12.0f);
+      body_lookahead_m_ = std::clamp(model.value("body_lookahead_m", 6.0f), 1.0f, 12.0f);
       body_heading_response_ =
-          std::clamp(model.value("body_heading_response", 2.2f), 0.5f, 8.0f);
-      smoothing_iterations_ = std::clamp(model.value("smoothing_iterations", 3), 0, 4);
+          std::clamp(model.value("body_heading_response", 1.8f), 0.5f, 8.0f);
       scenery_directory_ = entry.path().string();
       route_path_ = (entry.path() / "ssa_routes.json").string();
       const fs::path object_path = entry.path() / model.at("object").get<std::string>();
@@ -148,7 +148,7 @@ void RouteEditor::begin_planner(double latitude, double longitude, float heading
 
 void RouteEditor::open_planner() {
   if (!instance_ || points_.empty()) return;
-  build_smooth_test_path();
+  build_bezier_path();
   int left{}, top{}, right{}, bottom{};
   XPLMGetScreenBoundsGlobal(&left, &top, &right, &bottom);
   if (!planner_window_) {
@@ -223,7 +223,7 @@ void RouteEditor::draw_planner() {
   float title_color[] = {0.25f, 0.95f, 0.65f};
   float marker_color[] = {1.0f, 0.72f, 0.20f};
   float route_color[] = {0.55f, 1.0f, 0.70f};
-  char title[] = "SSA ROUTE PLANNER | CLICK: ADD GPS POINT | SHIFT+MMB / D-PAD: PAN | WHEEL: ZOOM";
+  char title[] = "SSA BEZIER ROUTE | CLICK: ADD ANCHOR | SHIFT+MMB / D-PAD: PAN | WHEEL: ZOOM";
   XPLMDrawString(title_color, left + 24, top - 30, title, nullptr,
                  xplmFont_Proportional);
   auto draw_button = [&](int button_left, int button_top, int button_right,
@@ -240,11 +240,9 @@ void RouteEditor::draw_planner() {
   draw_button(right - 140, top - 124, right - 104, top - 152, "<");
   draw_button(right - 100, top - 124, right - 64, top - 152, "v");
   draw_button(right - 60, top - 124, right - 24, top - 152, ">");
-  char curve_label[32];
-  std::snprintf(curve_label, sizeof(curve_label), "CURVE SMOOTH: %d", smoothing_iterations_);
-  draw_button(right - 180, top - 180, right - 24, top - 212, curve_label);
-  draw_button(right - 180, top - 220, right - 110, top - 252, "CURVE -");
-  draw_button(right - 94, top - 220, right - 24, top - 252, "CURVE +");
+  draw_button(right - 180, top - 180, right - 24, top - 212, "PATH: BEZIER AUTO");
+  draw_button(right - 180, top - 220, right - 24, top - 252,
+              loop_enabled_ ? "LOOP: ON" : "LOOP: OFF");
   const float width = static_cast<float>(std::max(1, right - left));
   const float height = static_cast<float>(std::max(1, top - bottom));
   const float half_width_m = planner_half_width();
@@ -274,7 +272,7 @@ void RouteEditor::draw_planner() {
     int sx{}, sy{};
     screen(points_[i], sx, sy);
     char marker[24];
-    std::snprintf(marker, sizeof(marker), "[ %zu ]", i + 1);
+    std::snprintf(marker, sizeof(marker), "[ A%zu ]", i + 1);
     XPLMDrawString(marker_color, sx - 10, sy, marker, nullptr,
                    xplmFont_Proportional);
   }
@@ -294,11 +292,11 @@ int RouteEditor::planner_mouse(int x, int y, XPLMMouseStatus status) {
     if (x >= left + 24 && x <= left + 110) undo_point();
     else if (x >= left + 124 && x <= left + 210) {
       start_test();
-      close_planner();
+      if (state_ == RouteEditorState::Testing) close_planner();
     } else if (x >= left + 224 && x <= left + 310) {
       state_ = RouteEditorState::Editing;
-      save();
-      close_planner();
+      if (save()) close_planner();
+      else state_ = RouteEditorState::Planning;
     } else if (x >= right - 110 && x <= right - 24) {
       close_planner();
     }
@@ -322,12 +320,11 @@ int RouteEditor::planner_mouse(int x, int y, XPLMMouseStatus status) {
     return 1;
   }
   if (y >= top - 252 && y <= top - 220) {
-    if (x >= right - 180 && x <= right - 110) adjust_curve(-1);
-    else if (x >= right - 94 && x <= right - 24) adjust_curve(1);
+    if (x >= right - 180 && x <= right - 24) toggle_loop();
     return 1;
   }
   if (x >= right - 190 && y <= top - 170 && y >= top - 260) return 1;
-  // Keep the title/toolbar band from accidentally creating a waypoint.
+  // Keep the title/toolbar band from accidentally creating an anchor.
   if (y > top - 90) return 1;
   const float width = static_cast<float>(std::max(1, right - left));
   const float height = static_cast<float>(std::max(1, top - bottom));
@@ -422,9 +419,9 @@ void RouteEditor::add_point_at(float x, float z) {
                                                   -(point.z - previous.z)) * 180.0f / pi);
   }
   points_.push_back(point);
-  build_smooth_test_path();
+  build_bezier_path();
   current_ = point;
-  status_ = "GPS waypoint " + std::to_string(points_.size()) + " added";
+  status_ = "Bezier anchor " + std::to_string(points_.size()) + " added";
   show(spin_, 0.0f);
 }
 
@@ -450,7 +447,8 @@ void RouteEditor::turn(float degrees) {
 void RouteEditor::add_point() {
   if (state_ != RouteEditorState::Editing) return;
   points_.push_back(current_);
-  status_ = "Waypoint " + std::to_string(points_.size()) + " added";
+  build_bezier_path();
+  status_ = "Anchor " + std::to_string(points_.size()) + " added";
   show(spin_, 0.0f);
 }
 
@@ -458,9 +456,9 @@ void RouteEditor::undo_point() {
   if ((state_ != RouteEditorState::Editing && state_ != RouteEditorState::Planning) ||
       points_.size() <= 1) return;
   points_.pop_back();
-  build_smooth_test_path();
+  build_bezier_path();
   current_ = points_.back();
-  status_ = "Last waypoint removed";
+  status_ = "Last anchor removed";
   show(spin_, 0.0f);
 }
 
@@ -471,67 +469,80 @@ float RouteEditor::heading_delta(float from, float to) {
   return result;
 }
 
-void RouteEditor::build_smooth_test_path() {
-  test_points_ = points_;
-  if (test_points_.size() >= 3) {
-    for (int iteration = 0; iteration < smoothing_iterations_; ++iteration) {
-      std::vector<RoutePoint> smooth;
-      smooth.reserve(test_points_.size() * 2);
-      smooth.push_back(test_points_.front());
-      for (size_t i = 0; i + 1 < test_points_.size(); ++i) {
-        const auto& a = test_points_[i];
-        const auto& b = test_points_[i + 1];
-        smooth.push_back({a.x * 0.75f + b.x * 0.25f,
-                          a.y * 0.75f + b.y * 0.25f,
-                          a.z * 0.75f + b.z * 0.25f, 0.0f});
-        smooth.push_back({a.x * 0.25f + b.x * 0.75f,
-                          a.y * 0.25f + b.y * 0.75f,
-                          a.z * 0.25f + b.z * 0.75f, 0.0f});
-      }
-      smooth.push_back(test_points_.back());
-      test_points_ = std::move(smooth);
+void RouteEditor::build_bezier_path() {
+  test_points_.clear();
+  if (points_.empty()) return;
+  if (points_.size() == 1) {
+    test_points_ = points_;
+    return;
+  }
+  const bool closed = loop_enabled_ && points_.size() >= 3;
+  const size_t segment_count = closed ? points_.size() : points_.size() - 1;
+  auto anchor = [&](long long index) -> const RoutePoint& {
+    const long long count = static_cast<long long>(points_.size());
+    if (closed) {
+      index %= count;
+      if (index < 0) index += count;
+      return points_[static_cast<size_t>(index)];
+    }
+    return points_[static_cast<size_t>(std::clamp<long long>(index, 0, count - 1))];
+  };
+  test_points_.push_back(points_.front());
+  for (size_t segment = 0; segment < segment_count; ++segment) {
+    const auto& p0 = anchor(static_cast<long long>(segment) - 1);
+    const auto& p1 = anchor(static_cast<long long>(segment));
+    const auto& p2 = anchor(static_cast<long long>(segment) + 1);
+    const auto& p3 = anchor(static_cast<long long>(segment) + 2);
+    const float c1x = p1.x + (p2.x - p0.x) / 6.0f;
+    const float c1y = p1.y + (p2.y - p0.y) / 6.0f;
+    const float c1z = p1.z + (p2.z - p0.z) / 6.0f;
+    const float c2x = p2.x - (p3.x - p1.x) / 6.0f;
+    const float c2y = p2.y - (p3.y - p1.y) / 6.0f;
+    const float c2z = p2.z - (p3.z - p1.z) / 6.0f;
+    const float chord = std::hypot(p2.x - p1.x, p2.z - p1.z);
+    if (chord < 0.01f) continue;
+    const int steps = std::max(4, static_cast<int>(std::ceil(chord / 0.35f)));
+    for (int step = 1; step <= steps; ++step) {
+      const float t = static_cast<float>(step) / static_cast<float>(steps);
+      const float u = 1.0f - t;
+      const float x = u * u * u * p1.x + 3.0f * u * u * t * c1x +
+                      3.0f * u * t * t * c2x + t * t * t * p2.x;
+      const float fallback_y = u * u * u * p1.y + 3.0f * u * u * t * c1y +
+                               3.0f * u * t * t * c2y + t * t * t * p2.y;
+      const float z = u * u * u * p1.z + 3.0f * u * u * t * c1z +
+                      3.0f * u * t * t * c2z + t * t * t * p2.z;
+      test_points_.push_back({x, terrain_y(x, z, fallback_y), z, 0.0f});
     }
   }
-  // Resample the rounded polyline into short, evenly spaced steps. This keeps
-  // body heading and wheel steering changing continuously rather than snapping
-  // at a sparse waypoint.
-  if (test_points_.size() > 1) {
-    std::vector<RoutePoint> dense;
-    dense.push_back(test_points_.front());
-    for (size_t i = 0; i + 1 < test_points_.size(); ++i) {
-      const auto& a = test_points_[i];
-      const auto& b = test_points_[i + 1];
-      const float distance = std::hypot(b.x - a.x, b.z - a.z);
-      if (distance < 0.01f) continue;
-      const int steps = std::max(1, static_cast<int>(std::ceil(distance / 0.40f)));
-      for (int step = 1; step <= steps; ++step) {
-        const float ratio = static_cast<float>(step) / static_cast<float>(steps);
-        dense.push_back({a.x + (b.x - a.x) * ratio,
-                         a.y + (b.y - a.y) * ratio,
-                         a.z + (b.z - a.z) * ratio, 0.0f});
-      }
-    }
-    test_points_ = std::move(dense);
-  }
-  const size_t tangent_span = std::max<size_t>(2, static_cast<size_t>(
+  size_t tangent_span = std::max<size_t>(2, static_cast<size_t>(
       std::lround(body_lookahead_m_ / 0.8f)));
-  for (size_t i = 0; i < test_points_.size(); ++i) {
-    const size_t behind = i > tangent_span ? i - tangent_span : 0;
-    const size_t ahead = std::min(i + tangent_span, test_points_.size() - 1);
+  const size_t unique_count = closed && test_points_.size() > 1
+                                  ? test_points_.size() - 1 : test_points_.size();
+  if (closed) tangent_span = std::min(tangent_span, std::max<size_t>(1, (unique_count - 1) / 2));
+  for (size_t i = 0; i < unique_count; ++i) {
+    const size_t behind = closed ? (i + unique_count - tangent_span) % unique_count
+                                 : (i > tangent_span ? i - tangent_span : 0);
+    const size_t ahead = closed ? (i + tangent_span) % unique_count
+                                : std::min(i + tangent_span, unique_count - 1);
     const float dx = test_points_[ahead].x - test_points_[behind].x;
     const float dz = test_points_[ahead].z - test_points_[behind].z;
     test_points_[i].heading = normalize_heading(std::atan2(dx, -dz) * 180.0f / pi);
   }
+  if (closed) test_points_.back().heading = test_points_.front().heading;
 }
 
 void RouteEditor::start_test() {
   if ((state_ != RouteEditorState::Editing && state_ != RouteEditorState::Planning) ||
       points_.size() < 2) {
-    status_ = "Add at least two waypoints";
+    status_ = "Add at least two anchors";
     return;
   }
   return_to_planner_after_test_ = state_ == RouteEditorState::Planning;
-  build_smooth_test_path();
+  if (loop_enabled_ && points_.size() < 3) {
+    status_ = "Loop needs at least three anchors";
+    return;
+  }
+  build_bezier_path();
   if (test_points_.size() < 2) {
     return_to_planner_after_test_ = false;
     status_ = "Route points are too close together";
@@ -546,11 +557,11 @@ void RouteEditor::start_test() {
   show(spin_, 0.0f);
 }
 
-void RouteEditor::adjust_curve(int delta) {
+void RouteEditor::toggle_loop() {
   if (state_ != RouteEditorState::Planning && state_ != RouteEditorState::Editing) return;
-  smoothing_iterations_ = std::clamp(smoothing_iterations_ + delta, 0, 4);
-  build_smooth_test_path();
-  status_ = "Curve smoothing set to " + std::to_string(smoothing_iterations_);
+  loop_enabled_ = !loop_enabled_;
+  build_bezier_path();
+  status_ = loop_enabled_ ? "Loop animation enabled" : "Loop animation disabled";
 }
 
 void RouteEditor::stop_test() {
@@ -580,6 +591,15 @@ void RouteEditor::update(float elapsed_seconds) {
     current_.z = target.z;
     ++test_index_;
     if (test_index_ >= test_points_.size()) {
+      if (loop_enabled_) {
+        current_.x = test_points_.front().x;
+        current_.y = test_points_.front().y;
+        current_.z = test_points_.front().z;
+        test_index_ = 1;
+        status_ = "Route loop running";
+        show(spin_, display_steering_);
+        return;
+      }
       state_ = RouteEditorState::Editing;
       status_ = "Route test complete";
       display_steering_ = 0.0f;
@@ -594,12 +614,18 @@ void RouteEditor::update(float elapsed_seconds) {
   }
   size_t body_lookahead_index = test_index_;
   float lookahead_distance = 0.0f;
-  while (body_lookahead_index + 1 < test_points_.size() &&
-         lookahead_distance < body_lookahead_m_) {
+  size_t lookahead_guard = 0;
+  while (lookahead_distance < body_lookahead_m_ &&
+         lookahead_guard++ < test_points_.size()) {
+    size_t next_index = body_lookahead_index + 1;
+    if (next_index >= test_points_.size()) {
+      if (!loop_enabled_) break;
+      next_index = 1;
+    }
     const auto& a = test_points_[body_lookahead_index];
-    const auto& b = test_points_[body_lookahead_index + 1];
+    const auto& b = test_points_[next_index];
     lookahead_distance += std::hypot(b.x - a.x, b.z - a.z);
-    ++body_lookahead_index;
+    body_lookahead_index = next_index;
   }
   const auto& body_target = test_points_[body_lookahead_index];
   const float body_dx = body_target.x - current_.x;
@@ -629,7 +655,11 @@ void RouteEditor::update(float elapsed_seconds) {
 
 bool RouteEditor::save() {
   if (state_ != RouteEditorState::Editing || points_.size() < 2) {
-    status_ = "Add at least two waypoints";
+    status_ = "Add at least two anchors";
+    return false;
+  }
+  if (loop_enabled_ && points_.size() < 3) {
+    status_ = "Loop needs at least three anchors";
     return false;
   }
   try {
@@ -637,14 +667,14 @@ bool RouteEditor::save() {
     route["schema"] = 1;
     route["routes"] = json::array();
     json item = {{"id", "bus_route_01"}, {"label", "Apron Bus Route 01"},
-                 {"model", model_id_}, {"loop", true}, {"speed_mps", speed_mps_},
-                 {"curve_smoothing", smoothing_iterations_}};
+                 {"model", model_id_}, {"path_type", "bezier_auto"},
+                 {"loop", loop_enabled_}, {"speed_mps", speed_mps_}};
     item["waypoints"] = json::array();
     for (const auto& point : points_) {
       double latitude{}, longitude{}, altitude{};
       XPLMLocalToWorld(point.x, point.y, point.z, &latitude, &longitude, &altitude);
       item["waypoints"].push_back({{"latitude", latitude}, {"longitude", longitude},
-                                     {"heading", point.heading}});
+                                     {"heading", point.heading}, {"kind", "bezier_anchor"}});
     }
     route["routes"].push_back(std::move(item));
     std::ofstream output(route_path_);
@@ -664,6 +694,7 @@ void RouteEditor::cancel() {
   points_.clear();
   test_points_.clear();
   return_to_planner_after_test_ = false;
+  loop_enabled_ = false;
   state_ = RouteEditorState::Idle;
   status_ = "Route editor idle";
   if (instance_) {

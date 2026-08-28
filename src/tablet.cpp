@@ -99,17 +99,19 @@ void Tablet::draw_impl() {
     } else if (editor_state == RouteEditorState::Idle) {
       label(l + 22, t - 145, route_editor_.status().c_str());
       button(l + 22, t - 165, l + 245, t - 205, "PLAN ROUTE - TOP DOWN");
-      label(l + 22, t - 230, "Click the apron to add numbered GPS waypoints.", 0.75f, 0.85f, 0.95f);
+      label(l + 22, t - 230, "Click the apron to add automatic Bezier anchors.", 0.75f, 0.85f, 0.95f);
     } else if (editor_state == RouteEditorState::Editing) {
       char route_info[180];
-      std::snprintf(route_info, sizeof(route_info), "Waypoints: %zu  |  Heading: %.0f deg",
-                    route_editor_.point_count(), route_editor_.heading());
+      std::snprintf(route_info, sizeof(route_info),
+                    "Bezier anchors: %zu  |  Loop: %s  |  Heading: %.0f deg",
+                    route_editor_.point_count(), route_editor_.loop_enabled() ? "ON" : "OFF",
+                    route_editor_.heading());
       label(l + 22, t - 135, route_info);
       button(l + 22, t - 148, l + 152, t - 180, "LEFT 15");
       button(l + 172, t - 148, l + 342, t - 180, "FORWARD 2 M");
       button(l + 362, t - 148, r - 22, t - 180, "RIGHT 15");
       button(l + 22, t - 190, l + 152, t - 222, "BACK 2 M");
-      button(l + 172, t - 190, l + 342, t - 222, "ADD POINT");
+      button(l + 172, t - 190, l + 342, t - 222, "ADD ANCHOR");
       button(l + 362, t - 190, r - 22, t - 222, "UNDO");
       button(l + 22, t - 232, l + 152, t - 264, "TEST ROUTE", 1.0f, 0.72f, 0.20f);
       button(l + 172, t - 232, l + 342, t - 264, "SAVE ROUTE", 1.0f, 0.72f, 0.20f);
@@ -117,10 +119,10 @@ void Tablet::draw_impl() {
       label(l + 22, t - 290, route_editor_.status().c_str(), 0.75f, 0.85f, 0.95f);
     } else if (editor_state == RouteEditorState::Planning) {
       label(l + 22, t - 150, "TOP-DOWN PLANNER ACTIVE", 1.0f, 0.72f, 0.20f);
-      label(l + 22, t - 195, "Use the full-screen overlay to add GPS waypoints.");
+      label(l + 22, t - 195, "Use the overlay to add automatic Bezier anchors.");
     } else {
       char testing[160];
-      std::snprintf(testing, sizeof(testing), "TESTING ROUTE  |  Waypoints: %zu",
+      std::snprintf(testing, sizeof(testing), "TESTING ROUTE  |  Anchors: %zu",
                     route_editor_.point_count());
       label(l + 22, t - 150, testing, 1.0f, 0.72f, 0.20f);
       button(l + 22, t - 170, l + 160, t - 205, "STOP TEST");

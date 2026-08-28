@@ -1,14 +1,14 @@
 # SSA — Scenery Service Animation
 
 **Developer:** BoldStudio31  
-**Status:** top-down vehicle route planner beta 0.9.5  
+**Status:** automatic Bezier vehicle route planner beta 0.10.0  
 **Targets:** X-Plane 11.50+ and X-Plane 12; Windows, Linux and macOS
 
 SSA is a standalone animation controller for scenery objects. It provides custom
 datarefs for hangars, jetways, moving vehicles, ground staff and parking
 displays. It does not depend on SAM or AutoGate.
 
-## Implemented through 0.9.5
+## Implemented through 0.10.0
 
 - Dynamic custom datarefs loaded from each scenery package's `ssa.json`.
 - Smooth open/close animation with configurable speed.
@@ -24,33 +24,34 @@ displays. It does not depend on SAM or AutoGate.
 - Float datarefs support configurable ranges, allowing vehicle steering to use
   the natural `-1` (left), `0` (center), `1` (right) convention while existing
   hangar and jetway animations remain normalized to `0..1`.
-- Route editing includes 2 m forward/back steps, 15 degree left/right turns,
-  waypoint add/undo, test, cancel and JSON save controls.
+- Route editing includes top-down anchor placement plus legacy 2 m movement and
+  15 degree turn controls, undo, test, cancel and JSON save.
 - Vehicle instances follow terrain height with a configurable model ground
   offset. Route tests drive wheel spin and front steering automatically.
-- Saved waypoints use latitude/longitude rather than transient X-Plane local
+- Saved Bezier anchors use latitude/longitude rather than transient X-Plane local
   coordinates and are written to the scenery's `ssa_routes.json`.
-- BetterPushback-style top-down planning mode captures clicks over the apron,
-  draws numbered GPS markers and a dotted route, supports wheel zoom, and
+- BetterPushback-style top-down planning mode captures anchor clicks over the apron,
+  draws numbered markers and a dotted automatic Bezier route, supports wheel zoom, and
   exposes UNDO, TEST, SAVE and EXIT controls in the overlay.
 - The on-screen direction pad pans the top-down camera while planning. Toolbar
   controls have visible, exact button rectangles so TEST cannot be mistaken for UNDO.
 - Configurable steering inversion fixes models whose front wheels turn in the
-  opposite direction. Steering input is damped and a rounded test path is
-  generated from the saved waypoints for smoother cornering.
+  opposite direction. Steering input follows the sampled Bezier curvature.
 - A completed or manually stopped overlay test automatically returns to the
   same top-down planning view.
-- Rounded routes are resampled every 0.4 metres; the bus slows for sharp turns
+- Bezier routes are sampled about every 0.35 metres; the bus slows for sharp turns
   and the tablet DEV controls use separated visible buttons with exact hitboxes.
 - Windows route planning supports Shift + middle-mouse dragging without taking
-  keyboard focus. The right-side CURVE control changes smoothing from 0 to 4
-  and the dotted preview displays the resulting rounded route.
+  keyboard focus. The dotted preview displays the generated cubic Bezier route.
 - Front-wheel steering follows route curvature with look-ahead and a straight-line
   dead zone, preventing left/right oscillation. Stopping a planner test returns
   directly to the retained top-down Create Route view.
 - Bus body heading uses a multi-metre forward target and centred path tangents,
   then applies damped rotation plus a heading dead zone. This filters small
   alternating segment angles without removing genuine turns.
+- Each click is an automatic Bezier anchor. LOOP can close routes with three or
+  more anchors, continuously replay the bus animation, and is stored in
+  `ssa_routes.json`; stopping the test returns to the retained planner.
 - Per-model heading offsets correct OBJ forward-axis differences without
   re-exporting Blender; the Gapura bus profile uses 180 degrees.
 - Nearby hangar list (2 km) and small jetway activation radius (35 m).

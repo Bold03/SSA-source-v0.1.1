@@ -13,9 +13,8 @@ Add a vehicle model entry at the top level of `ssa.json`:
     "ground_offset_m": 0.445,
     "heading_offset_deg": 180.0,
     "steering_multiplier": -1.0,
-    "body_lookahead_m": 4.0,
-    "body_heading_response": 2.2,
-    "smoothing_iterations": 3,
+    "body_lookahead_m": 6.0,
+    "body_heading_response": 1.8,
     "speed_mps": 4.0
   }
 ]
@@ -30,18 +29,19 @@ boldstudio31/ssa/vehicle/steering    (-1..0..1, no loop)
 
 In X-Plane, open the SSA tablet, enable Developer Mode under Settings and open
 the DEV tab. Start the top-down planner at the aircraft, click the apron to add
-numbered GPS waypoints, use Shift + middle-mouse drag on Windows or the on-screen
-direction pad to pan and the mouse wheel to zoom, then test or save from the boxed
-overlay toolbar. The CURVE control previews smoothing levels 0 to 4. After
-a test finishes, SSA returns to the same planning view. `steering_multiplier` reverses
-an OBJ whose front-wheel animation faces the wrong direction. Route testing uses
-`smoothing_iterations` (0 to 4) to round waypoint corners. SSA writes
-`ssa_routes.json` beside the scenery's `ssa.json`.
+numbered automatic Bezier anchors, use Shift + middle-mouse drag on Windows or
+the on-screen direction pad to pan and the mouse wheel to zoom, then test or save
+from the boxed overlay toolbar. SSA calculates cubic Bezier handles from the
+neighbouring anchors, so no smoothing-level control is required. LOOP ON joins
+the final anchor to the first and requires at least three anchors. STOP TEST
+returns to the same planning view. `steering_multiplier` reverses an OBJ whose
+front-wheel animation faces the wrong direction. SSA writes `ssa_routes.json`
+beside the scenery's `ssa.json`.
 
 `body_lookahead_m` controls how far ahead the bus looks when choosing its body
 heading; a longer distance suppresses small left/right corrections. The
 `body_heading_response` value controls how quickly the body rotates toward that
-heading. The Gapura bus defaults to 4 metres and 2.2 respectively.
+heading. The Gapura bus defaults to 6 metres and 1.8 respectively.
 
 ## Folder layout
 
