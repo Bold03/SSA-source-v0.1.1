@@ -15,6 +15,9 @@
       "wheelbase_m": 7.6,
       "max_steering_deg": 35.0,
       "speed_mps": 4.0,
+      "max_speed_mps": 9.0,
+      "adaptive_speed_start_m": 80.0,
+      "adaptive_speed_full_m": 300.0,
       "acceleration_mps2": 1.5,
       "braking_mps2": 2.5
     }

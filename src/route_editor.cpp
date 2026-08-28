@@ -81,6 +81,12 @@ bool RouteEditor::load(const std::string& xplane_root) {
       acceleration_mps2_ =
           std::clamp(model.value("acceleration_mps2", 1.5f), 0.2f, 6.0f);
       braking_mps2_ = std::clamp(model.value("braking_mps2", 2.5f), 0.5f, 8.0f);
+      max_speed_mps_ = std::clamp(model.value("max_speed_mps", 9.0f), speed_mps_, 20.0f);
+      adaptive_speed_start_m_ =
+          std::clamp(model.value("adaptive_speed_start_m", 80.0f), 10.0f, 1000.0f);
+      adaptive_speed_full_m_ = std::clamp(
+          model.value("adaptive_speed_full_m", 300.0f),
+          adaptive_speed_start_m_ + 10.0f, 5000.0f);
       heading_offset_deg_ = model.value("heading_offset_deg", 180.0f);
       steering_multiplier_ = model.value("steering_multiplier", -1.0f);
       body_lookahead_m_ = std::clamp(model.value("body_lookahead_m", 6.0f), 1.0f, 12.0f);
@@ -188,6 +194,9 @@ bool RouteEditor::load_saved_route() {
       if (route.anchors.size() < 2) continue;
       build_bezier_path(route.anchors, route.loop, route.path, route.distance_remaining);
       if (route.path.size() < 2) continue;
+      const float route_length = route.distance_remaining.empty()
+                                     ? 0.0f : route.distance_remaining.front();
+      route.cruise_speed_mps = adaptive_speed(route.speed_mps, route_length);
       route.current = route.path.front();
       route.instance = XPLMCreateInstance(object_, datarefs);
       if (!route.instance) continue;
@@ -218,6 +227,13 @@ float RouteEditor::terrain_y(float x, float z, float fallback) const {
 
 void RouteEditor::show(float spin, float steering) {
   show_instance(instance_, current_, spin, steering);
+}
+
+float RouteEditor::adaptive_speed(float base_speed, float route_length) const {
+  const float span = std::max(10.0f, adaptive_speed_full_m_ - adaptive_speed_start_m_);
+  const float ratio = std::clamp((route_length - adaptive_speed_start_m_) / span,
+                                 0.0f, 1.0f);
+  return base_speed + (std::max(base_speed, max_speed_mps_) - base_speed) * ratio;
 }
 
 void RouteEditor::show_instance(XPLMInstanceRef instance, const RoutePoint& point,
@@ -794,6 +810,9 @@ void RouteEditor::start_test() {
     return;
   }
   current_ = test_points_.front();
+  const float route_length = test_distance_remaining_.empty()
+                                 ? 0.0f : test_distance_remaining_.front();
+  test_cruise_speed_mps_ = adaptive_speed(speed_mps_, route_length);
   test_index_ = 1;
   spin_ = 0.0f;
   current_speed_mps_ = 0.0f;
@@ -895,7 +914,7 @@ void RouteEditor::update_traffic_route(TrafficRoute& route, float elapsed_second
   const float route_curve = heading_delta(target.heading, body_target.heading);
   const float corner_speed =
       std::clamp(1.0f - std::abs(route_curve) / 80.0f, 0.40f, 1.0f);
-  float target_speed = route.speed_mps * corner_speed;
+  float target_speed = route.cruise_speed_mps * corner_speed;
   if (!route.loop && route.path_index < route.distance_remaining.size()) {
     const float remaining = distance + route.distance_remaining[route.path_index];
     target_speed = std::min(target_speed, std::sqrt(2.0f * braking_mps2_ * remaining));
@@ -1013,7 +1032,7 @@ void RouteEditor::update(float elapsed_seconds) {
   current_.heading = normalize_heading(current_.heading + turn_step);
   const float route_curve = heading_delta(target.heading, body_target.heading);
   const float corner_speed = std::clamp(1.0f - std::abs(route_curve) / 80.0f, 0.40f, 1.0f);
-  float target_speed = speed_mps_ * corner_speed;
+  float target_speed = test_cruise_speed_mps_ * corner_speed;
   if (!loop_enabled_ && test_index_ < test_distance_remaining_.size()) {
     const float remaining = distance + test_distance_remaining_[test_index_];
     target_speed = std::min(target_speed, std::sqrt(2.0f * braking_mps2_ * remaining));

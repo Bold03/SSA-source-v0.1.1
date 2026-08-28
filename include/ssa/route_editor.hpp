@@ -32,6 +32,7 @@ struct TrafficRoute {
   bool autostart{true};
   bool running{};
   float speed_mps{4.0f};
+  float cruise_speed_mps{4.0f};
   float current_speed_mps{};
   float spin{};
   float steering{};
@@ -92,6 +93,7 @@ private:
                          std::vector<RoutePoint>& path,
                          std::vector<float>& distance_remaining);
   void update_traffic_route(TrafficRoute& route, float elapsed_seconds);
+  float adaptive_speed(float base_speed, float route_length) const;
   void update_planner_drag();
   void open_planner();
   void close_planner();
@@ -122,6 +124,9 @@ private:
   float speed_mps_{4.0f};
   float acceleration_mps2_{1.5f};
   float braking_mps2_{2.5f};
+  float max_speed_mps_{9.0f};
+  float adaptive_speed_start_m_{80.0f};
+  float adaptive_speed_full_m_{300.0f};
   float heading_offset_deg_{180.0f};
   float steering_multiplier_{-1.0f};
   float body_lookahead_m_{6.0f};
@@ -132,6 +137,7 @@ private:
   float spin_{};
   float current_speed_mps_{};
   float display_steering_{};
+  float test_cruise_speed_mps_{4.0f};
   float planner_height_m_{160.0f};
   float planner_center_x_{};
   float planner_center_y_{};

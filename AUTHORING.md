@@ -19,6 +19,9 @@ Add a vehicle model entry at the top level of `ssa.json`:
     "wheelbase_m": 7.6,
     "max_steering_deg": 35.0,
     "speed_mps": 4.0,
+    "max_speed_mps": 9.0,
+    "adaptive_speed_start_m": 80.0,
+    "adaptive_speed_full_m": 300.0,
     "acceleration_mps2": 1.5,
     "braking_mps2": 2.5
   }
@@ -74,6 +77,11 @@ naturally through a corner.
 Vehicle instances update every simulator frame. `acceleration_mps2` and
 `braking_mps2` control traffic-style speed changes; the default bus accelerates
 at 1.5 m/s2 and brakes at 2.5 m/s2 instead of instantly changing speed.
+
+Adaptive cruise speed keeps short apron routes at `speed_mps` and gradually
+raises longer routes toward `max_speed_mps`. The default ramp starts at 80 m
+and reaches full speed at 300 m. Curve-speed reduction and final braking remain
+active, so increasing long-route speed does not remove corner control.
 
 ## Folder layout
 
