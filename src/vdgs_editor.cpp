@@ -12,7 +12,9 @@ using json = nlohmann::json;
 namespace ssa {
 namespace {
 constexpr float pi = 3.14159265358979323846f;
-constexpr const char* instance_datarefs[] = {
+// XPLMCreateInstance in the X-Plane SDK takes const char** (the pointer array
+// itself is mutable), so this must not be a constexpr/const pointer array.
+const char* instance_datarefs[] = {
     "boldstudio31/ssa/vdgs/active", "boldstudio31/ssa/vdgs/left",
     "boldstudio31/ssa/vdgs/right", "boldstudio31/ssa/vdgs/center",
     "boldstudio31/ssa/vdgs/slow", "boldstudio31/ssa/vdgs/stop",
