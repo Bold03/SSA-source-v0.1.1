@@ -22,11 +22,13 @@ Tablet::Tablet(SceneryManager& scenery, RouteEditor& route_editor,
                std::function<void()> toggle_auto,
                std::function<void()> reload_config,
                std::function<void(ServiceObject&)> toggle_object,
+               std::function<void(ServiceObject*)> select_vdgs,
                std::function<void()> toggle_vehicle_spin,
                std::function<void(float)> set_vehicle_steering)
     : scenery_(scenery), route_editor_(route_editor), vdgs_editor_(vdgs_editor),
       toggle_auto_(std::move(toggle_auto)),
       reload_config_(std::move(reload_config)), toggle_object_(std::move(toggle_object)),
+      select_vdgs_(std::move(select_vdgs)),
       toggle_vehicle_spin_(std::move(toggle_vehicle_spin)),
       set_vehicle_steering_(std::move(set_vehicle_steering)) {
   XPLMCreateWindow_t params{};
@@ -179,8 +181,14 @@ void Tablet::draw_impl() {
   }
   if (tab_ == 5) {
     label(l + 22, t - 105, "VISUAL DOCKING GUIDANCE SYSTEM", 0.25f, 0.95f, 0.65f);
-    auto displays = scenery_.nearby(ServiceType::ParkingDisplay, latitude_, longitude_, 250.0);
-    int vdgs_y = t - 150;
+    auto displays = scenery_.nearby(ServiceType::ParkingDisplay, latitude_, longitude_, 2000.0);
+    const bool manual_gate = std::any_of(
+        displays.begin(), displays.end(), [](const auto* display) { return display->vdgs_armed; });
+    button(r - 150, t - 82, r - 22, t - 112,
+           manual_gate ? "RETURN AUTO" : "AUTO CORRIDOR",
+           manual_gate ? 1.0f : 0.25f, manual_gate ? 0.72f : 0.95f,
+           manual_gate ? 0.20f : 0.65f);
+    int vdgs_y = t - 145;
     for (size_t i = 0; i < std::min<size_t>(displays.size(), 6); ++i, vdgs_y -= 52) {
       const auto* display = displays[i];
       const char* state = "IDLE";
@@ -192,9 +200,10 @@ void Tablet::draw_impl() {
         case VdgsState::Overshoot: state = "OVERSHOOT"; break;
         case VdgsState::Idle: state = "IDLE"; break;
       }
+      if (display->vdgs_armed && !display->vdgs_selected) state = "ARMED";
       char line[190];
       if (display->vdgs_selected) {
-        std::snprintf(line, sizeof(line), "%zu. %s  |  %s", i + 1,
+        std::snprintf(line, sizeof(line), "%zu. %.22s  |  %s", i + 1,
                       display->label.c_str(), state);
         label(l + 22, vdgs_y, line, display->vdgs_state == VdgsState::Stop ? 1.0f : 0.90f,
               display->vdgs_state == VdgsState::Stop ? 0.30f : 0.95f,
@@ -204,15 +213,28 @@ void Tablet::draw_impl() {
                       display->vdgs_distance_error_m, display->vdgs_lateral_error_m,
                       display->vdgs_effective_stop_m);
         label(l + 38, vdgs_y - 20, line, 0.55f, 0.85f, 0.75f);
+      } else if (display->vdgs_armed) {
+        std::snprintf(line, sizeof(line), "%zu. %.22s  |  ARMED", i + 1,
+                      display->label.c_str());
+        label(l + 22, vdgs_y, line, 1.0f, 0.72f, 0.20f);
+        label(l + 38, vdgs_y - 20, "Waiting for aircraft inside approach corridor",
+              0.55f, 0.85f, 0.75f);
       } else {
-        std::snprintf(line, sizeof(line), "%zu. %s  |  IDLE", i + 1,
+        std::snprintf(line, sizeof(line), "%zu. %.22s  |  IDLE", i + 1,
                       display->label.c_str());
         label(l + 22, vdgs_y, line, 0.70f, 0.78f, 0.85f);
       }
+      button(r - 112, vdgs_y + 14, r - 22, vdgs_y - 16,
+             display->vdgs_armed ? "SELECTED" : "SELECT",
+             display->vdgs_armed ? 1.0f : 0.25f,
+             display->vdgs_armed ? 0.72f : 0.95f,
+             display->vdgs_armed ? 0.20f : 0.65f);
     }
     if (displays.empty())
-      label(l + 22, vdgs_y, "No VDGS found within 250 m.", 1.0f, 0.65f, 0.35f);
-    label(l + 22, b + 42, "VDGS activates automatically during stand approach.",
+      label(l + 22, vdgs_y, "No VDGS found within 2 km.", 1.0f, 0.65f, 0.35f);
+    label(l + 22, b + 42,
+          manual_gate ? "Selected gate stays armed; all other VDGS displays are dark."
+                      : "AUTO CORRIDOR selects one display when its approach lane is entered.",
           0.55f, 0.85f, 0.75f);
     return;
   }
@@ -420,6 +442,22 @@ int Tablet::mouse_impl(int x, int y, XPLMMouseStatus status) {
     return 1;
   }
   if (tab_ == 1 && y < t - 85 && y > t - 145) { toggle_auto_(); return 1; }
+  if (tab_ == 5) {
+    if (x >= r - 150 && x <= r - 22 && y <= t - 82 && y >= t - 112) {
+      select_vdgs_(nullptr);
+      return 1;
+    }
+    auto displays = scenery_.nearby(ServiceType::ParkingDisplay, latitude_, longitude_, 2000.0);
+    int vdgs_y = t - 145;
+    const size_t shown = std::min<size_t>(displays.size(), 6);
+    for (size_t i = 0; i < shown; ++i, vdgs_y -= 52) {
+      if (x >= r - 112 && x <= r - 22 && y <= vdgs_y + 14 && y >= vdgs_y - 16) {
+        select_vdgs_(displays[i]);
+        return 1;
+      }
+    }
+    return 1;
+  }
   if (tab_ == 2) {
     if (y <= t - 118 && y >= t - 150) {
       if (x >= l + 22 && x <= l + 180) route_editor_.start_all_saved_routes();

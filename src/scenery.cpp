@@ -132,6 +132,8 @@ bool SceneryManager::load_file(const std::string& path) {
         object.vdgs.acquisition_distance_m =
             std::clamp(v.value("acquisition_distance_m", 80.0f),
                        object.vdgs.stop_distance_m + 5.0f, 250.0f);
+        object.vdgs.corridor_half_width_m =
+            std::clamp(v.value("corridor_half_width_m", 8.0f), 2.0f, 30.0f);
         object.vdgs.slow_distance_m = std::clamp(v.value("slow_distance_m", 12.0f), 2.0f, 40.0f);
         object.vdgs.stop_tolerance_m = std::clamp(v.value("stop_tolerance_m", 0.50f), 0.10f, 2.0f);
         object.vdgs.lateral_full_scale_m = std::clamp(v.value("lateral_full_scale_m", 3.0f), 0.5f, 15.0f);

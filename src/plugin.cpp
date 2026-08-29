@@ -49,6 +49,20 @@ bool realops_detected{};
 bool vehicle_spin_test{};
 float compatibility_timer{};
 int action_toggle{}, action_open{1}, action_close{2};
+std::string armed_vdgs_id;
+
+void log(const std::string& message);
+
+void select_vdgs(ssa::ServiceObject* display) {
+  if (!display || display->type != ssa::ServiceType::ParkingDisplay ||
+      armed_vdgs_id == display->id) {
+    armed_vdgs_id.clear();
+    log("VDGS selection: AUTO CORRIDOR");
+    return;
+  }
+  armed_vdgs_id = display->id;
+  log("VDGS armed: " + display->label);
+}
 
 void clear_vdgs_datarefs() {
   if (vdgs_editor) vdgs_editor->clear_guidance();
@@ -68,33 +82,63 @@ void update_vdgs(double aircraft_lat, double aircraft_lon) {
   for (auto& object : scenery->objects()) {
     if (object.type != ssa::ServiceType::ParkingDisplay) continue;
     object.vdgs_selected = false;
+    object.vdgs_armed = !armed_vdgs_id.empty() && object.id == armed_vdgs_id;
     object.vdgs_state = ssa::VdgsState::Idle;
   }
 
-  auto candidates = scenery->nearby(ssa::ServiceType::ParkingDisplay,
-                                    aircraft_lat, aircraft_lon, 250.0);
-  if (candidates.empty()) return;
-  ssa::ServiceObject* display = nullptr;
-  for (auto* candidate : candidates) {
-    if (candidate->vdgs.enabled) {
-      display = candidate;
-      break;
-    }
-  }
-  if (!display) return;
-
   double aircraft_x{}, aircraft_y{}, aircraft_z{};
-  double display_x{}, display_y{}, display_z{};
   XPLMWorldToLocal(aircraft_lat, aircraft_lon, 0.0,
                    &aircraft_x, &aircraft_y, &aircraft_z);
-  XPLMWorldToLocal(display->latitude, display->longitude, 0.0,
-                   &display_x, &display_y, &display_z);
   constexpr double radians = 3.14159265358979323846 / 180.0;
-  const double angle = static_cast<double>(display->vdgs.object_heading_deg) * radians;
-  const double east = aircraft_x - display_x;
-  const double north = -(aircraft_z - display_z);
-  const float lateral = static_cast<float>(east * std::cos(angle) - north * std::sin(angle));
-  const float forward = static_cast<float>(east * std::sin(angle) + north * std::cos(angle));
+  auto candidates = scenery->nearby(ssa::ServiceType::ParkingDisplay,
+                                    aircraft_lat, aircraft_lon, 250.0);
+  if (!armed_vdgs_id.empty()) {
+    candidates.clear();
+    const auto found = std::find_if(
+        scenery->objects().begin(), scenery->objects().end(), [&](const auto& object) {
+          return object.type == ssa::ServiceType::ParkingDisplay &&
+                 object.id == armed_vdgs_id;
+        });
+    if (found != scenery->objects().end()) candidates.push_back(&*found);
+    else armed_vdgs_id.clear();
+  }
+
+  ssa::ServiceObject* display = nullptr;
+  float lateral{};
+  float forward{};
+  for (auto* candidate : candidates) {
+    if (!candidate->vdgs.enabled) continue;
+    double display_x{}, display_y{}, display_z{};
+    XPLMWorldToLocal(candidate->latitude, candidate->longitude, 0.0,
+                     &display_x, &display_y, &display_z);
+    const double angle = static_cast<double>(candidate->vdgs.object_heading_deg) * radians;
+    const double east = aircraft_x - display_x;
+    const double north = -(aircraft_z - display_z);
+    const float candidate_lateral =
+        static_cast<float>(east * std::cos(angle) - north * std::sin(angle));
+    const float candidate_forward =
+        static_cast<float>(east * std::sin(angle) + north * std::cos(angle));
+    const bool inside_corridor =
+        candidate_forward > 0.0f &&
+        candidate_forward <= candidate->vdgs.acquisition_distance_m &&
+        std::abs(candidate_lateral) <= candidate->vdgs.corridor_half_width_m;
+    if (!inside_corridor) continue;
+    display = candidate;
+    lateral = candidate_lateral;
+    forward = candidate_forward;
+    break;
+  }
+  if (!display) {
+    // A manually selected gate shows a centred standby marker so pilots can
+    // identify the armed stand before entering its approach corridor. This is
+    // applied per instance; every other saved VDGS remains dark.
+    if (!armed_vdgs_id.empty() && vdgs_editor)
+      vdgs_editor->set_guidance(armed_vdgs_id,
+                                {1.0f, 0.0f, 0.0f, 1.0f,
+                                 0.0f, 0.0f, 0.5f, 1.0f});
+    return;
+  }
+
   float effective_stop_m = display->vdgs.stop_distance_m;
   if (display->vdgs.use_aircraft_length && aircraft_length_ref) {
     const float aircraft_length_m = XPLMGetDataf(aircraft_length_ref);
@@ -110,11 +154,6 @@ void update_vdgs(double aircraft_lat, double aircraft_lon) {
   display->vdgs_lateral_error_m = lateral;
   display->vdgs_distance_error_m = distance_error;
   display->vdgs_effective_stop_m = effective_stop_m;
-
-  const bool in_front = forward > 0.0f;
-  const bool in_range = forward <= display->vdgs.acquisition_distance_m &&
-                        std::abs(lateral) <= display->vdgs.lateral_full_scale_m * 2.0f;
-  if (!in_front || !in_range) return;
 
   display->vdgs_selected = true;
   const float distance_span = std::max(1.0f, display->vdgs.acquisition_distance_m -
@@ -650,7 +689,8 @@ PLUGIN_API int XPluginStart(char* name, char* signature, char* description) {
     vdgs_editor->load(root);
     tablet = std::make_unique<ssa::Tablet>(*scenery, *route_editor, *vdgs_editor,
                                            toggle_auto, reload_scenery,
-                                           toggle_tablet_object, toggle_vehicle_spin_test,
+                                           toggle_tablet_object, select_vdgs,
+                                           toggle_vehicle_spin_test,
                                            set_vehicle_steering_test);
 
     lat_ref = XPLMFindDataRef("sim/flightmodel/position/latitude");
@@ -688,7 +728,7 @@ PLUGIN_API int XPluginStart(char* name, char* signature, char* description) {
     XPLMAppendMenuItem(menu, "Toggle nearest hangar", reinterpret_cast<void*>(3), 0);
     XPLMAppendMenuItem(menu, "Toggle nearest jetway", reinterpret_cast<void*>(4), 0);
     XPLMRegisterFlightLoopCallback(flight_loop, -1.0f, nullptr);
-    log("SSA 0.18.4 started: " + std::to_string(scenery->objects().size()) +
+    log("SSA 0.19.0 started: " + std::to_string(scenery->objects().size()) +
         " object(s), L1 door dataref " + (door_open_ref ? "detected" : "not found"));
     return 1;
   } catch (const std::exception& e) {

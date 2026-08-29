@@ -1,7 +1,7 @@
 # SSA — Scenery Service Animation
 
 **Developer:** BoldStudio31  
-**Status:** aircraft-length-aware VDGS beta 0.18.4  
+**Status:** VDGS gate selection and approach corridors beta 0.19.0  
 **Targets:** X-Plane 11.50+ and X-Plane 12; Windows, Linux and macOS
 
 SSA is a standalone animation controller for scenery objects. It provides custom
@@ -13,7 +13,7 @@ developers. Open it in a browser, choose a scenery folder and OBJ, and copy the
 sanitized `boldstudio31/ssa/animation/scenery/object` dataref into both Blender
 and `ssa.json`.
 
-## Implemented through 0.18.4
+## Implemented through 0.19.0
 
 - Dynamic custom datarefs loaded from each scenery package's `ssa.json`.
 - Smooth open/close animation with configurable speed.
@@ -27,6 +27,9 @@ and `ssa.json`.
   in WED. Instance animation values are independent for each saved stand.
 - VDGS STOP distance accounts for the loaded aircraft length plus configurable
   nose clearance, preventing the cockpit/nose from passing through the display.
+- VDGS AUTO CORRIDOR activates only one display when an aircraft enters its
+  configured approach lane. Players can manually arm a gate from up to two
+  kilometres away; every unselected display remains dark.
 - Player Mode is the safe default and hides diagnostics and scenery-authoring tools.
 - The tablet Settings tab contains a clear Developer Mode ON/OFF control.
   Normal players leave it OFF; enabling it adds a DEV tab with aircraft

@@ -275,7 +275,8 @@ bool VdgsEditor::save() {
         {"dataref", "boldstudio31/ssa/animation/vdgs/" + id + "/state"}};
     item["vdgs"] = {{"object_heading_deg", heading_}, {"stop_distance_m", 18.0f},
                      {"use_aircraft_length", true}, {"nose_clearance_m", 2.5f},
-                     {"acquisition_distance_m", 80.0f}, {"slow_distance_m", 12.0f},
+                     {"acquisition_distance_m", 80.0f},
+                     {"corridor_half_width_m", 8.0f}, {"slow_distance_m", 12.0f},
                      {"stop_tolerance_m", 0.5f}, {"lateral_full_scale_m", 3.0f},
                      {"lateral_deadband_m", 0.15f},
                      {"lateral_stop_tolerance_m", 0.35f},

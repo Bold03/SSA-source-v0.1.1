@@ -167,6 +167,7 @@ distance in front of the display.
     "use_aircraft_length": true,
     "nose_clearance_m": 2.5,
     "acquisition_distance_m": 80.0,
+    "corridor_half_width_m": 8.0,
     "slow_distance_m": 12.0,
     "stop_tolerance_m": 0.5,
     "lateral_full_scale_m": 3.0,
@@ -187,6 +188,13 @@ SSA normally stops the aircraft reference point at half the loaded aircraft
 length plus `nose_clearance_m`, preventing different aircraft noses from
 reaching the panel. Increase `nose_clearance_m` if a particular model still
 stops too close.
+
+`acquisition_distance_m` and `corridor_half_width_m` form a straight approach
+corridor in front of the display. In AUTO CORRIDOR mode SSA activates only the
+first VDGS whose corridor contains the aircraft. A player can instead select a
+gate in the tablet VDGS tab before entering the apron. The selected display is
+ARMED, every other VDGS stays dark, and acquisition begins only after the
+aircraft enters that gate's corridor.
 
 ### Place VDGS inside X-Plane
 

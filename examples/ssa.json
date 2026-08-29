@@ -131,6 +131,7 @@
         "use_aircraft_length": true,
         "nose_clearance_m": 2.5,
         "acquisition_distance_m": 80.0,
+        "corridor_half_width_m": 8.0,
         "slow_distance_m": 12.0,
         "stop_tolerance_m": 0.5,
         "lateral_full_scale_m": 3.0,

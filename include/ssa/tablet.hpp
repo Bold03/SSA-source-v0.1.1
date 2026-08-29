@@ -14,6 +14,7 @@ public:
          std::function<void()> toggle_auto,
          std::function<void()> reload_config,
          std::function<void(ServiceObject&)> toggle_object,
+         std::function<void(ServiceObject*)> select_vdgs,
          std::function<void()> toggle_vehicle_spin,
          std::function<void(float)> set_vehicle_steering);
   ~Tablet();
@@ -41,6 +42,7 @@ private:
   std::function<void()> toggle_auto_;
   std::function<void()> reload_config_;
   std::function<void(ServiceObject&)> toggle_object_;
+  std::function<void(ServiceObject*)> select_vdgs_;
   std::function<void()> toggle_vehicle_spin_;
   std::function<void(float)> set_vehicle_steering_;
   double latitude_{};
