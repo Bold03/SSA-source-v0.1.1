@@ -1,7 +1,7 @@
 # SSA — Scenery Service Animation
 
 **Developer:** BoldStudio31  
-**Status:** in-game VDGS placement beta 0.18.2  
+**Status:** in-game VDGS placement beta 0.18.3  
 **Targets:** X-Plane 11.50+ and X-Plane 12; Windows, Linux and macOS
 
 SSA is a standalone animation controller for scenery objects. It provides custom
@@ -13,7 +13,7 @@ developers. Open it in a browser, choose a scenery folder and OBJ, and copy the
 sanitized `boldstudio31/ssa/animation/scenery/object` dataref into both Blender
 and `ssa.json`.
 
-## Implemented through 0.18.2
+## Implemented through 0.18.3
 
 - Dynamic custom datarefs loaded from each scenery package's `ssa.json`.
 - Smooth open/close animation with configurable speed.

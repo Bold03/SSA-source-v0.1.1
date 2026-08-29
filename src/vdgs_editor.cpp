@@ -1,4 +1,5 @@
 #include "ssa/vdgs_editor.hpp"
+#include <XPLMGraphics.h>
 #include <nlohmann/json.hpp>
 #include <algorithm>
 #include <cmath>
