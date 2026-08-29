@@ -18,12 +18,14 @@ void button(int left, int top, int right, int bottom, const char* text,
 }
 
 Tablet::Tablet(SceneryManager& scenery, RouteEditor& route_editor,
+               VdgsEditor& vdgs_editor,
                std::function<void()> toggle_auto,
                std::function<void()> reload_config,
                std::function<void(ServiceObject&)> toggle_object,
                std::function<void()> toggle_vehicle_spin,
                std::function<void(float)> set_vehicle_steering)
-    : scenery_(scenery), route_editor_(route_editor), toggle_auto_(std::move(toggle_auto)),
+    : scenery_(scenery), route_editor_(route_editor), vdgs_editor_(vdgs_editor),
+      toggle_auto_(std::move(toggle_auto)),
       reload_config_(std::move(reload_config)), toggle_object_(std::move(toggle_object)),
       toggle_vehicle_spin_(std::move(toggle_vehicle_spin)),
       set_vehicle_steering_(std::move(set_vehicle_steering)) {
@@ -45,6 +47,8 @@ void Tablet::toggle() { XPLMSetWindowIsVisible(window_, visible() ? 0 : 1); }
 bool Tablet::visible() const { return window_ && XPLMGetWindowIsVisible(window_) != 0; }
 void Tablet::toggle_developer_mode() {
   developer_mode_ = !developer_mode_;
+  if (!developer_mode_ && vdgs_editor_.state() == VdgsEditorState::Placing)
+    vdgs_editor_.cancel();
   if (!developer_mode_ && (tab_ == 4 || tab_ == 2)) tab_ = 3;
   XPLMSetWindowTitle(window_, developer_mode_
                                  ? "SSA - Scenery Service Animation [DEVELOPER]"
@@ -65,16 +69,19 @@ void Tablet::draw_impl() {
   XPLMGetWindowGeometry(window_, &l, &t, &r, &b);
   label(l + 22, t - 35, "BOLDSTUDIO31  |  SSA", 0.25f, 0.95f, 0.65f);
   const char* tabs = developer_mode_
-      ? "[ HANGAR ]  JETWAY  SETTINGS  DEV  TRAFFIC"
-      : "[ HANGAR ]   JETWAY   SETTINGS";
+      ? "[HANGAR]  JETWAY  VDGS  SET  DEV  BUS"
+      : "[ HANGAR ]   JETWAY   VDGS   SETTINGS";
   if (tab_ == 1) tabs = developer_mode_
-      ? "HANGAR  [ JETWAY ]  SETTINGS  DEV  TRAFFIC"
-      : "HANGAR   [ JETWAY ]   SETTINGS";
-  else if (tab_ == 2) tabs = "HANGAR  JETWAY  SETTINGS  DEV  [ TRAFFIC ]";
+      ? "HANGAR  [JETWAY]  VDGS  SET  DEV  BUS"
+      : "HANGAR   [ JETWAY ]   VDGS   SETTINGS";
+  else if (tab_ == 5) tabs = developer_mode_
+      ? "HANGAR  JETWAY  [VDGS]  SET  DEV  BUS"
+      : "HANGAR   JETWAY   [ VDGS ]   SETTINGS";
+  else if (tab_ == 2) tabs = "HANGAR  JETWAY  VDGS  SET  DEV  [BUS]";
   else if (tab_ == 3) tabs = developer_mode_
-      ? "HANGAR  JETWAY  [ SETTINGS ]  DEV  TRAFFIC"
-      : "HANGAR   JETWAY   [ SETTINGS ]";
-  else if (tab_ == 4) tabs = "HANGAR  JETWAY  SETTINGS  [ DEV ]  TRAFFIC";
+      ? "HANGAR  JETWAY  VDGS  [SET]  DEV  BUS"
+      : "HANGAR   JETWAY   VDGS   [ SETTINGS ]";
+  else if (tab_ == 4) tabs = "HANGAR  JETWAY  VDGS  SET  [DEV]  BUS";
   label(l + 22, t - 70, tabs);
 
   if (tab_ == 3) {
@@ -96,15 +103,44 @@ void Tablet::draw_impl() {
   }
 
   if (tab_ == 4 && developer_mode_) {
-    label(l + 22, t - 105, "DEVELOPER TOOLS  |  MOVING CAR ROUTE EDITOR", 1.0f, 0.72f, 0.20f);
+    if (vdgs_editor_.state() == VdgsEditorState::Placing) {
+      label(l + 22, t - 105, "DEVELOPER TOOLS  |  VDGS PLACEMENT", 1.0f, 0.72f, 0.20f);
+      char placement[220];
+      std::snprintf(placement, sizeof(placement),
+                    "Lat %.8f  Lon %.8f  Alt %.2f m  Heading %.1f",
+                    vdgs_editor_.latitude(), vdgs_editor_.longitude(),
+                    vdgs_editor_.altitude_m(), vdgs_editor_.heading());
+      label(l + 22, t - 135, placement, 0.75f, 0.85f, 0.95f);
+      button(l + 22, t - 148, l + 152, t - 180, "LEFT 1 M");
+      button(l + 172, t - 148, l + 342, t - 180, "FORWARD 1 M");
+      button(l + 362, t - 148, r - 22, t - 180, "RIGHT 1 M");
+      button(l + 22, t - 190, l + 152, t - 222, "ALT -0.1 M");
+      button(l + 172, t - 190, l + 342, t - 222, "BACK 1 M");
+      button(l + 362, t - 190, r - 22, t - 222, "ALT +0.1 M");
+      button(l + 22, t - 232, l + 152, t - 264, "ROTATE -5");
+      button(l + 172, t - 232, l + 342, t - 264, "SAVE VDGS", 1.0f, 0.72f, 0.20f);
+      button(l + 362, t - 232, r - 22, t - 264, "ROTATE +5");
+      button(l + 22, t - 274, l + 152, t - 306, "CANCEL", 1.0f, 0.72f, 0.20f);
+      label(l + 172, t - 292, vdgs_editor_.status().c_str(), 0.75f, 0.85f, 0.95f);
+      label(l + 22, b + 42, "VDGS is a live X-Plane instance; SAVE writes ssa.json.",
+            1.0f, 0.72f, 0.20f);
+      return;
+    }
+    label(l + 22, t - 105, "DEVELOPER TOOLS  |  ROUTES AND VDGS", 1.0f, 0.72f, 0.20f);
     const auto editor_state = route_editor_.state();
     if (editor_state == RouteEditorState::Unavailable) {
       label(l + 22, t - 145, route_editor_.status().c_str(), 1.0f, 0.45f, 0.35f);
       label(l + 22, t - 190, "Add vehicle_models to ssa.json, then reload.");
+      if (vdgs_editor_.state() == VdgsEditorState::Idle) {
+        button(l + 265, t - 165, r - 22, t - 205, "PLACE VDGS");
+        label(l + 22, t - 230, vdgs_editor_.status().c_str(), 0.55f, 0.85f, 0.75f);
+      }
     } else if (editor_state == RouteEditorState::Idle) {
       label(l + 22, t - 145, route_editor_.status().c_str());
-      button(l + 22, t - 165, l + 245, t - 205, "PLAN ROUTE - TOP DOWN");
+      button(l + 22, t - 165, l + 245, t - 205, "PLAN BUS ROUTE");
+      button(l + 265, t - 165, r - 22, t - 205, "PLACE VDGS");
       label(l + 22, t - 230, "Click the apron to add automatic Bezier anchors.", 0.75f, 0.85f, 0.95f);
+      label(l + 22, t - 252, vdgs_editor_.status().c_str(), 0.55f, 0.85f, 0.75f);
     } else if (editor_state == RouteEditorState::Editing) {
       char route_info[180];
       std::snprintf(route_info, sizeof(route_info),
@@ -139,6 +175,43 @@ void Tablet::draw_impl() {
                             : "Developer Mode | RealOps not detected",
           1.0f, 0.72f, 0.20f);
     label(r - 96, b + 20, "[ EXIT DEV ]", 1.0f, 0.72f, 0.20f);
+    return;
+  }
+  if (tab_ == 5) {
+    label(l + 22, t - 105, "VISUAL DOCKING GUIDANCE SYSTEM", 0.25f, 0.95f, 0.65f);
+    auto displays = scenery_.nearby(ServiceType::ParkingDisplay, latitude_, longitude_, 250.0);
+    int vdgs_y = t - 150;
+    for (size_t i = 0; i < std::min<size_t>(displays.size(), 6); ++i, vdgs_y -= 52) {
+      const auto* display = displays[i];
+      const char* state = "IDLE";
+      switch (display->vdgs_state) {
+        case VdgsState::Acquired: state = "ACQUIRED"; break;
+        case VdgsState::Guiding: state = "GUIDING"; break;
+        case VdgsState::Slow: state = "SLOW"; break;
+        case VdgsState::Stop: state = "STOP"; break;
+        case VdgsState::Overshoot: state = "OVERSHOOT"; break;
+        case VdgsState::Idle: state = "IDLE"; break;
+      }
+      char line[190];
+      if (display->vdgs_selected) {
+        std::snprintf(line, sizeof(line), "%zu. %s  |  %s", i + 1,
+                      display->label.c_str(), state);
+        label(l + 22, vdgs_y, line, display->vdgs_state == VdgsState::Stop ? 1.0f : 0.90f,
+              display->vdgs_state == VdgsState::Stop ? 0.30f : 0.95f,
+              display->vdgs_state == VdgsState::Stop ? 0.20f : 1.0f);
+        std::snprintf(line, sizeof(line), "Distance: %+.1f m   Lateral: %+.2f m",
+                      display->vdgs_distance_error_m, display->vdgs_lateral_error_m);
+        label(l + 38, vdgs_y - 20, line, 0.55f, 0.85f, 0.75f);
+      } else {
+        std::snprintf(line, sizeof(line), "%zu. %s  |  IDLE", i + 1,
+                      display->label.c_str());
+        label(l + 22, vdgs_y, line, 0.70f, 0.78f, 0.85f);
+      }
+    }
+    if (displays.empty())
+      label(l + 22, vdgs_y, "No VDGS found within 250 m.", 1.0f, 0.65f, 0.35f);
+    label(l + 22, b + 42, "VDGS activates automatically during stand approach.",
+          0.55f, 0.85f, 0.75f);
     return;
   }
   if (tab_ == 1) {
@@ -268,14 +341,16 @@ int Tablet::mouse_impl(int x, int y, XPLMMouseStatus status) {
   }
   if (y < t - 45 && y > t - 85) {
     if (developer_mode_) {
-      if (x < l + 105) tab_ = 0;
-      else if (x < l + 205) tab_ = 1;
-      else if (x < l + 320) tab_ = 3;
+      if (x < l + 82) tab_ = 0;
+      else if (x < l + 168) tab_ = 1;
+      else if (x < l + 245) tab_ = 5;
+      else if (x < l + 325) tab_ = 3;
       else if (x < l + 405) tab_ = 4;
       else tab_ = 2;
     } else {
-      if (x < l + 135) tab_ = 0;
-      else if (x < l + 260) tab_ = 1;
+      if (x < l + 112) tab_ = 0;
+      else if (x < l + 220) tab_ = 1;
+      else if (x < l + 318) tab_ = 5;
       else tab_ = 3;
     }
     return 1;
@@ -287,10 +362,38 @@ int Tablet::mouse_impl(int x, int y, XPLMMouseStatus status) {
     return 1;
   }
   if (tab_ == 4) {
+    if (vdgs_editor_.state() == VdgsEditorState::Placing) {
+      const bool column_left = x >= l + 22 && x <= l + 152;
+      const bool column_middle = x >= l + 172 && x <= l + 342;
+      const bool column_right = x >= l + 362 && x <= r - 22;
+      if (y <= t - 148 && y >= t - 180) {
+        if (column_left) vdgs_editor_.move_side(-1.0f);
+        else if (column_middle) vdgs_editor_.move_forward(1.0f);
+        else if (column_right) vdgs_editor_.move_side(1.0f);
+      } else if (y <= t - 190 && y >= t - 222) {
+        if (column_left) vdgs_editor_.adjust_altitude(-0.1f);
+        else if (column_middle) vdgs_editor_.move_forward(-1.0f);
+        else if (column_right) vdgs_editor_.adjust_altitude(0.1f);
+      } else if (y <= t - 232 && y >= t - 264) {
+        if (column_left) vdgs_editor_.turn(-5.0f);
+        else if (column_middle) {
+          if (vdgs_editor_.save()) reload_config_();
+        } else if (column_right) vdgs_editor_.turn(5.0f);
+      } else if (column_left && y <= t - 274 && y >= t - 306) {
+        vdgs_editor_.cancel();
+      }
+      return 1;
+    }
     const auto editor_state = route_editor_.state();
     if (editor_state == RouteEditorState::Idle && x >= l + 22 && x <= l + 245 &&
         y <= t - 165 && y >= t - 205) {
       route_editor_.begin_planner(latitude_, longitude_, heading_);
+    } else if ((editor_state == RouteEditorState::Idle ||
+                editor_state == RouteEditorState::Unavailable) &&
+               vdgs_editor_.state() == VdgsEditorState::Idle &&
+               x >= l + 265 && x <= r - 22 &&
+               y <= t - 165 && y >= t - 205) {
+      vdgs_editor_.begin(latitude_, longitude_, heading_);
     } else if (editor_state == RouteEditorState::Editing) {
       const bool column_left = x >= l + 22 && x <= l + 152;
       const bool column_middle = x >= l + 172 && x <= l + 342;

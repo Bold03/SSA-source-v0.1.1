@@ -121,6 +121,24 @@ bool SceneryManager::load_file(const std::string& path) {
         object.kinematics.connect_tolerance_m = std::clamp(k.value("connect_tolerance_m", 0.05f), 0.01f, 0.50f);
         object.kinematics.max_solution_error_m = std::clamp(k.value("max_solution_error_m", 0.25f), 0.05f, 2.0f);
       }
+      if (object.type == ServiceType::ParkingDisplay) {
+        const auto& v = item.contains("vdgs") ? item.at("vdgs") : item;
+        object.vdgs.enabled = true;
+        object.vdgs.object_heading_deg = v.value("object_heading_deg", 0.0f);
+        object.vdgs.stop_distance_m = std::clamp(v.value("stop_distance_m", 18.0f), 2.0f, 80.0f);
+        object.vdgs.acquisition_distance_m =
+            std::clamp(v.value("acquisition_distance_m", 80.0f),
+                       object.vdgs.stop_distance_m + 5.0f, 250.0f);
+        object.vdgs.slow_distance_m = std::clamp(v.value("slow_distance_m", 12.0f), 2.0f, 40.0f);
+        object.vdgs.stop_tolerance_m = std::clamp(v.value("stop_tolerance_m", 0.50f), 0.10f, 2.0f);
+        object.vdgs.lateral_full_scale_m = std::clamp(v.value("lateral_full_scale_m", 3.0f), 0.5f, 15.0f);
+        object.vdgs.lateral_deadband_m = std::clamp(v.value("lateral_deadband_m", 0.15f), 0.02f, 1.0f);
+        object.vdgs.lateral_stop_tolerance_m =
+            std::clamp(v.value("lateral_stop_tolerance_m", 0.35f), 0.05f, 2.0f);
+        object.vdgs.lateral_multiplier =
+            std::clamp(v.value("lateral_multiplier", -1.0f), -1.0f, 1.0f);
+        object.radius_m = item.value("radius_m", object.vdgs.acquisition_distance_m);
+      }
       const bool duplicate = std::any_of(objects_.begin(), objects_.end(), [&](const auto& existing) {
         return existing.dataref == object.dataref;
       });

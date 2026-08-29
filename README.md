@@ -1,7 +1,7 @@
 # SSA — Scenery Service Animation
 
 **Developer:** BoldStudio31  
-**Status:** optimized multi-bus Traffic Manager beta 0.17.1  
+**Status:** in-game VDGS placement beta 0.18.1  
 **Targets:** X-Plane 11.50+ and X-Plane 12; Windows, Linux and macOS
 
 SSA is a standalone animation controller for scenery objects. It provides custom
@@ -13,11 +13,18 @@ developers. Open it in a browser, choose a scenery folder and OBJ, and copy the
 sanitized `boldstudio31/ssa/animation/scenery/object` dataref into both Blender
 and `ssa.json`.
 
-## Implemented through 0.17.1
+## Implemented through 0.18.1
 
 - Dynamic custom datarefs loaded from each scenery package's `ssa.json`.
 - Smooth open/close animation with configurable speed.
-- Tablet-style native X-Plane window with Hangar, Jetway and Bus tabs.
+- Tablet-style native X-Plane window with Hangar, Jetway, VDGS and Bus tabs.
+- Automatic VDGS acquisition with lateral arrows, moving T distance marker,
+  SLOW, STOP and overshoot protection.
+- Developer Mode can load `VDGS.obj` as a live X-Plane instance, move it in
+  one-metre steps, rotate it, adjust altitude and save latitude, longitude,
+  altitude and heading directly into the scenery's `ssa.json`.
+- Saved VDGS placements are restored automatically without placing the model
+  in WED. Instance animation values are independent for each saved stand.
 - Player Mode is the safe default and hides diagnostics and scenery-authoring tools.
 - The tablet Settings tab contains a clear Developer Mode ON/OFF control.
   Normal players leave it OFF; enabling it adds a DEV tab with aircraft

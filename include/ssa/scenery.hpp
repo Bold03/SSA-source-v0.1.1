@@ -13,6 +13,8 @@ enum class JetwayState {
   Connected, OutOfRange, Parking
 };
 
+enum class VdgsState { Idle, Acquired, Guiding, Slow, Stop, Overshoot };
+
 struct AnimationChannel {
   std::string name;
   std::string dataref;
@@ -46,6 +48,19 @@ struct JetwayKinematics {
   float max_solution_error_m{0.25f};
 };
 
+struct VdgsConfig {
+  bool enabled{};
+  float object_heading_deg{};
+  float stop_distance_m{18.0f};
+  float acquisition_distance_m{80.0f};
+  float slow_distance_m{12.0f};
+  float stop_tolerance_m{0.50f};
+  float lateral_full_scale_m{3.0f};
+  float lateral_deadband_m{0.15f};
+  float lateral_stop_tolerance_m{0.35f};
+  float lateral_multiplier{-1.0f};
+};
+
 struct ServiceObject {
   std::string id;
   std::string label;
@@ -64,6 +79,11 @@ struct ServiceObject {
   std::array<float, 4> solution_targets{};
   bool solution_ready{};
   JetwayKinematics kinematics;
+  VdgsConfig vdgs;
+  VdgsState vdgs_state{VdgsState::Idle};
+  float vdgs_lateral_error_m{};
+  float vdgs_distance_error_m{};
+  bool vdgs_selected{};
   std::vector<AnimationChannel> channels;
 };
 

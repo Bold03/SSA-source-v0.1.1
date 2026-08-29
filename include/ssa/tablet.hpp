@@ -2,6 +2,7 @@
 
 #include "ssa/scenery.hpp"
 #include "ssa/route_editor.hpp"
+#include "ssa/vdgs_editor.hpp"
 #include <XPLMDisplay.h>
 #include <functional>
 
@@ -9,7 +10,8 @@ namespace ssa {
 
 class Tablet {
 public:
-  Tablet(SceneryManager& scenery, RouteEditor& route_editor, std::function<void()> toggle_auto,
+  Tablet(SceneryManager& scenery, RouteEditor& route_editor, VdgsEditor& vdgs_editor,
+         std::function<void()> toggle_auto,
          std::function<void()> reload_config,
          std::function<void(ServiceObject&)> toggle_object,
          std::function<void()> toggle_vehicle_spin,
@@ -35,6 +37,7 @@ private:
   XPLMWindowID window_{};
   SceneryManager& scenery_;
   RouteEditor& route_editor_;
+  VdgsEditor& vdgs_editor_;
   std::function<void()> toggle_auto_;
   std::function<void()> reload_config_;
   std::function<void(ServiceObject&)> toggle_object_;

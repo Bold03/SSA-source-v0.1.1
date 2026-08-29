@@ -133,6 +133,84 @@ Use a short unique scenery ID rather than an airport ICAO. Example:
 
 `boldstudio31/ssa/animation/test_ssa/hangar_door_01`
 
+## VDGS parking display
+
+Export the VDGS OBJ with these exact animation datarefs:
+
+```text
+boldstudio31/ssa/vdgs/active
+boldstudio31/ssa/vdgs/left
+boldstudio31/ssa/vdgs/right
+boldstudio31/ssa/vdgs/center
+boldstudio31/ssa/vdgs/slow
+boldstudio31/ssa/vdgs/stop
+boldstudio31/ssa/vdgs/lateral
+boldstudio31/ssa/vdgs/distance_ratio
+```
+
+Add one `parking_display` object to `ssa.json`. Its latitude and longitude are
+the VDGS pole position. `object_heading_deg` points from the display toward the
+approaching aircraft. `stop_distance_m` is the desired aircraft reference-point
+distance in front of the display.
+
+```json
+{
+  "id": "vdgs_gate_a1",
+  "label": "Gate A1 VDGS",
+  "type": "parking_display",
+  "latitude": -6.26645,
+  "longitude": 106.89102,
+  "radius_m": 90,
+  "vdgs": {
+    "object_heading_deg": 0.0,
+    "stop_distance_m": 18.0,
+    "acquisition_distance_m": 80.0,
+    "slow_distance_m": 12.0,
+    "stop_tolerance_m": 0.5,
+    "lateral_full_scale_m": 3.0,
+    "lateral_deadband_m": 0.15,
+    "lateral_stop_tolerance_m": 0.35,
+    "lateral_multiplier": -1.0
+  }
+}
+```
+
+This VDGS OBJ uses `distance_ratio = 1` at the upper/far position and `0` at
+the lower/stop position. If its marker or arrows appear mirrored in X-Plane,
+change only `object_heading_deg` or `lateral_multiplier`; the Blender animation
+does not need to be rebuilt.
+
+### Place VDGS inside X-Plane
+
+Put the OBJ and its textures in either of these conventional locations:
+
+```text
+Custom Scenery/My Airport/object/VDGS.obj
+Custom Scenery/My Airport/objects/VDGS.obj
+```
+
+Open SSA Settings, enable Developer Mode, open DEV and press `PLACE VDGS`.
+The live preview initially appears 20 metres in front of the aircraft. Use the
+buttons to move it left/right/forward/back, change altitude by 0.1 metres, and
+rotate it by five degrees. `SAVE VDGS` appends the placement to `ssa.json` and
+stores `latitude`, `longitude`, `altitude_m`, `heading`, the relative OBJ path,
+and its default guidance calibration.
+
+Do not also place the same saved VDGS in WED. SSA restores the runtime instance
+from `ssa.json` whenever the scenery configuration loads.
+
+For a nonstandard filename, define the authoring model at the top level:
+
+```json
+"vdgs_models": [
+  {
+    "id": "default_vdgs",
+    "label": "SSA VDGS",
+    "object": "object/My_VDGS.obj"
+  }
+]
+```
+
 ## Blender / XPlane2Blender
 
 Animate every service over a normalized value from **0.0 (parked/closed)** to

@@ -2,6 +2,7 @@
 #include "ssa/scenery.hpp"
 #include "ssa/tablet.hpp"
 #include "ssa/route_editor.hpp"
+#include "ssa/vdgs_editor.hpp"
 #include <XPLMMenus.h>
 #include <XPLMPlugin.h>
 #include <XPLMProcessing.h>
@@ -20,9 +21,18 @@ ssa::DataRefRegistry refs;
 std::unique_ptr<ssa::SceneryManager> scenery;
 std::unique_ptr<ssa::Tablet> tablet;
 std::unique_ptr<ssa::RouteEditor> route_editor;
+std::unique_ptr<ssa::VdgsEditor> vdgs_editor;
 ssa::FloatDataRef* automatic_ref{};
 ssa::FloatDataRef* vehicle_spin_ref{};
 ssa::FloatDataRef* vehicle_steering_ref{};
+ssa::FloatDataRef* vdgs_active_ref{};
+ssa::FloatDataRef* vdgs_left_ref{};
+ssa::FloatDataRef* vdgs_right_ref{};
+ssa::FloatDataRef* vdgs_center_ref{};
+ssa::FloatDataRef* vdgs_slow_ref{};
+ssa::FloatDataRef* vdgs_stop_ref{};
+ssa::FloatDataRef* vdgs_lateral_ref{};
+ssa::FloatDataRef* vdgs_distance_ref{};
 XPLMDataRef lat_ref{}, lon_ref{}, heading_ref{}, icao_ref{}, door_open_ref{}, prop_ref{}, onground_ref{}, groundspeed_ref{};
 XPLMCommandRef tablet_command{};
 XPLMCommandRef reload_command{};
@@ -38,6 +48,100 @@ bool realops_detected{};
 bool vehicle_spin_test{};
 float compatibility_timer{};
 int action_toggle{}, action_open{1}, action_close{2};
+
+void clear_vdgs_datarefs() {
+  if (vdgs_editor) vdgs_editor->clear_guidance();
+  if (vdgs_active_ref) vdgs_active_ref->set(0.0f);
+  if (vdgs_left_ref) vdgs_left_ref->set(0.0f);
+  if (vdgs_right_ref) vdgs_right_ref->set(0.0f);
+  if (vdgs_center_ref) vdgs_center_ref->set(0.0f);
+  if (vdgs_slow_ref) vdgs_slow_ref->set(0.0f);
+  if (vdgs_stop_ref) vdgs_stop_ref->set(0.0f);
+  if (vdgs_lateral_ref) vdgs_lateral_ref->set(0.5f);
+  if (vdgs_distance_ref) vdgs_distance_ref->set(1.0f);
+}
+
+void update_vdgs(double aircraft_lat, double aircraft_lon) {
+  clear_vdgs_datarefs();
+  if (!scenery) return;
+  for (auto& object : scenery->objects()) {
+    if (object.type != ssa::ServiceType::ParkingDisplay) continue;
+    object.vdgs_selected = false;
+    object.vdgs_state = ssa::VdgsState::Idle;
+  }
+
+  auto candidates = scenery->nearby(ssa::ServiceType::ParkingDisplay,
+                                    aircraft_lat, aircraft_lon, 250.0);
+  if (candidates.empty()) return;
+  ssa::ServiceObject* display = nullptr;
+  for (auto* candidate : candidates) {
+    if (candidate->vdgs.enabled) {
+      display = candidate;
+      break;
+    }
+  }
+  if (!display) return;
+
+  double aircraft_x{}, aircraft_y{}, aircraft_z{};
+  double display_x{}, display_y{}, display_z{};
+  XPLMWorldToLocal(aircraft_lat, aircraft_lon, 0.0,
+                   &aircraft_x, &aircraft_y, &aircraft_z);
+  XPLMWorldToLocal(display->latitude, display->longitude, 0.0,
+                   &display_x, &display_y, &display_z);
+  constexpr double radians = 3.14159265358979323846 / 180.0;
+  const double angle = static_cast<double>(display->vdgs.object_heading_deg) * radians;
+  const double east = aircraft_x - display_x;
+  const double north = -(aircraft_z - display_z);
+  const float lateral = static_cast<float>(east * std::cos(angle) - north * std::sin(angle));
+  const float forward = static_cast<float>(east * std::sin(angle) + north * std::cos(angle));
+  const float distance_error = forward - display->vdgs.stop_distance_m;
+  display->vdgs_lateral_error_m = lateral;
+  display->vdgs_distance_error_m = distance_error;
+
+  const bool in_front = forward > 0.0f;
+  const bool in_range = forward <= display->vdgs.acquisition_distance_m &&
+                        std::abs(lateral) <= display->vdgs.lateral_full_scale_m * 2.0f;
+  if (!in_front || !in_range) return;
+
+  display->vdgs_selected = true;
+  const float distance_span = std::max(1.0f, display->vdgs.acquisition_distance_m -
+                                               display->vdgs.stop_distance_m);
+  const float distance_ratio = std::clamp(std::max(0.0f, distance_error) / distance_span,
+                                          0.0f, 1.0f);
+  const float lateral_ratio = std::clamp(
+      0.5f + display->vdgs.lateral_multiplier *
+                 (lateral / display->vdgs.lateral_full_scale_m) * 0.5f,
+      0.0f, 1.0f);
+  const bool too_right = lateral > display->vdgs.lateral_deadband_m;
+  const bool too_left = lateral < -display->vdgs.lateral_deadband_m;
+  const bool stopped = std::abs(distance_error) <= display->vdgs.stop_tolerance_m &&
+                       std::abs(lateral) <= display->vdgs.lateral_stop_tolerance_m;
+  const bool overshot = distance_error < -display->vdgs.stop_tolerance_m;
+  const bool slow = !stopped && !overshot && distance_error <= display->vdgs.slow_distance_m;
+
+  vdgs_active_ref->set(1.0f);
+  vdgs_center_ref->set(1.0f);
+  vdgs_lateral_ref->set(lateral_ratio);
+  vdgs_distance_ref->set(distance_ratio);
+  vdgs_left_ref->set(!stopped && too_right ? 1.0f : 0.0f);
+  vdgs_right_ref->set(!stopped && too_left ? 1.0f : 0.0f);
+  vdgs_slow_ref->set(slow ? 1.0f : 0.0f);
+  vdgs_stop_ref->set((stopped || overshot) ? 1.0f : 0.0f);
+  if (vdgs_editor) {
+    vdgs_editor->set_guidance(
+        display->id,
+        {1.0f, !stopped && too_right ? 1.0f : 0.0f,
+         !stopped && too_left ? 1.0f : 0.0f, 1.0f,
+         slow ? 1.0f : 0.0f, (stopped || overshot) ? 1.0f : 0.0f,
+         lateral_ratio, distance_ratio});
+  }
+
+  if (overshot) display->vdgs_state = ssa::VdgsState::Overshoot;
+  else if (stopped) display->vdgs_state = ssa::VdgsState::Stop;
+  else if (slow) display->vdgs_state = ssa::VdgsState::Slow;
+  else if (too_left || too_right) display->vdgs_state = ssa::VdgsState::Guiding;
+  else display->vdgs_state = ssa::VdgsState::Acquired;
+}
 
 struct DoorProfile {
   float forward_m;
@@ -339,6 +443,7 @@ void reload_scenery() {
     route_editor->load(root);
     route_editor->schedule_saved_route_load();
   }
+  if (vdgs_editor) vdgs_editor->load(root);
   // A reloaded jetway must be planned again from a known parked state; old
   // channel targets belong to the previous configuration geometry.
   for (auto& object : scenery->objects())
@@ -450,6 +555,8 @@ float flight_loop(float elapsed, float, int, void*) {
   const double lon = lon_ref ? XPLMGetDatad(lon_ref) : 0.0;
   const float aircraft_heading = heading_ref ? XPLMGetDataf(heading_ref) : 0.0f;
   tablet->set_position(lat, lon, aircraft_heading);
+  update_vdgs(lat, lon);
+  if (vdgs_editor) vdgs_editor->update();
   if (vehicle_spin_test && vehicle_spin_ref) {
     float spin = vehicle_spin_ref->value() + frame_elapsed * 0.65f;
     if (spin >= 1.0f) spin -= std::floor(spin);
@@ -512,13 +619,24 @@ PLUGIN_API int XPluginStart(char* name, char* signature, char* description) {
     vehicle_spin_ref = &refs.create("boldstudio31/ssa/vehicle/wheel_spin", 0.0f, true);
     vehicle_steering_ref = &refs.create("boldstudio31/ssa/vehicle/steering", 0.0f, true,
                                         -1.0f, 1.0f);
+    vdgs_active_ref = &refs.create("boldstudio31/ssa/vdgs/active", 0.0f, false);
+    vdgs_left_ref = &refs.create("boldstudio31/ssa/vdgs/left", 0.0f, false);
+    vdgs_right_ref = &refs.create("boldstudio31/ssa/vdgs/right", 0.0f, false);
+    vdgs_center_ref = &refs.create("boldstudio31/ssa/vdgs/center", 0.0f, false);
+    vdgs_slow_ref = &refs.create("boldstudio31/ssa/vdgs/slow", 0.0f, false);
+    vdgs_stop_ref = &refs.create("boldstudio31/ssa/vdgs/stop", 0.0f, false);
+    vdgs_lateral_ref = &refs.create("boldstudio31/ssa/vdgs/lateral", 0.5f, false);
+    vdgs_distance_ref = &refs.create("boldstudio31/ssa/vdgs/distance_ratio", 1.0f, false);
     scenery = std::make_unique<ssa::SceneryManager>(refs);
     char root[2048]{};
     XPLMGetSystemPath(root);
     scenery->load(root);
     route_editor = std::make_unique<ssa::RouteEditor>();
     route_editor->load(root);
-    tablet = std::make_unique<ssa::Tablet>(*scenery, *route_editor, toggle_auto, reload_scenery,
+    vdgs_editor = std::make_unique<ssa::VdgsEditor>();
+    vdgs_editor->load(root);
+    tablet = std::make_unique<ssa::Tablet>(*scenery, *route_editor, *vdgs_editor,
+                                           toggle_auto, reload_scenery,
                                            toggle_tablet_object, toggle_vehicle_spin_test,
                                            set_vehicle_steering_test);
 
@@ -556,7 +674,7 @@ PLUGIN_API int XPluginStart(char* name, char* signature, char* description) {
     XPLMAppendMenuItem(menu, "Toggle nearest hangar", reinterpret_cast<void*>(3), 0);
     XPLMAppendMenuItem(menu, "Toggle nearest jetway", reinterpret_cast<void*>(4), 0);
     XPLMRegisterFlightLoopCallback(flight_loop, -1.0f, nullptr);
-    log("SSA 0.17.1 started: " + std::to_string(scenery->objects().size()) +
+    log("SSA 0.18.1 started: " + std::to_string(scenery->objects().size()) +
         " object(s), L1 door dataref " + (door_open_ref ? "detected" : "not found"));
     return 1;
   } catch (const std::exception& e) {
@@ -578,6 +696,7 @@ PLUGIN_API void XPluginStop() {
   if (developer_mode_command) XPLMUnregisterCommandHandler(developer_mode_command, developer_mode_handler, 1, nullptr);
   if (menu) XPLMDestroyMenu(menu);
   tablet.reset();
+  vdgs_editor.reset();
   route_editor.reset();
   scenery.reset();
   refs.clear();
