@@ -204,7 +204,7 @@ bool RouteEditor::load_saved_route() {
       std::snprintf(fallback_id, sizeof(fallback_id), "bus_route_%02zu", fallback_number);
       route.id = route_json.value("id", std::string(fallback_id));
       route.label = route_json.value(
-          "label", std::string("Apron Bus Route ") + std::to_string(fallback_number));
+          "label", std::string("Apron Vehicle Route ") + std::to_string(fallback_number));
       route.model = route_json.value("model", model_ids_.front());
       if (route.model != "random" && !object_for_model(route.model)) {
         route.model = model_ids_.front();
@@ -369,7 +369,7 @@ void RouteEditor::select_model(int direction) {
     model_label_ = model_labels_[selected_model_index_];
   }
   recreate_editor_instance();
-  status_ = "Selected bus: " + model_label_;
+  status_ = "Selected vehicle: " + model_label_;
 }
 
 float RouteEditor::adaptive_speed(float base_speed, float route_length) const {
@@ -442,7 +442,7 @@ void RouteEditor::create_route(double latitude, double longitude, float heading)
                                   });
     if (!used) {
       editing_route_id_ = route_id;
-      editing_route_label_ = "Apron Bus Route " + std::to_string(route_number);
+      editing_route_label_ = "Apron Vehicle Route " + std::to_string(route_number);
       break;
     }
     ++route_number;
@@ -569,16 +569,16 @@ void RouteEditor::draw_planner() {
   draw_button(right - 180, top - 220, right - 24, top - 252,
               loop_enabled_ ? "LOOP: ON" : "LOOP: OFF");
   char model_button[96];
-  std::snprintf(model_button, sizeof(model_button), "BUS: %.20s", model_label_.c_str());
+  std::snprintf(model_button, sizeof(model_button), "VEHICLE: %.18s", model_label_.c_str());
   draw_button(right - 220, top - 260, right - 24, top - 292, model_button);
   draw_button(right - 220, top - 300, right - 126, top - 332, "< PREV");
   draw_button(right - 118, top - 300, right - 24, top - 332, "NEXT >");
   char count_button[64];
-  std::snprintf(count_button, sizeof(count_button), "BUS COUNT: %d",
+  std::snprintf(count_button, sizeof(count_button), "VEHICLE COUNT: %d",
                 editing_bus_count_);
   draw_button(right - 220, top - 340, right - 24, top - 372, count_button);
-  draw_button(right - 220, top - 380, right - 126, top - 412, "- BUS");
-  draw_button(right - 118, top - 380, right - 24, top - 412, "+ BUS");
+  draw_button(right - 220, top - 380, right - 126, top - 412, "- VEHICLE");
+  draw_button(right - 118, top - 380, right - 24, top - 412, "+ VEHICLE");
   char interval_button[64];
   std::snprintf(interval_button, sizeof(interval_button), "SPAWN: %.0f SEC",
                 editing_spawn_interval_s_);
@@ -756,7 +756,7 @@ int RouteEditor::planner_mouse(int x, int y, XPLMMouseStatus status) {
       editing_bus_count_ = std::max(1, editing_bus_count_ - 1);
     else if (x >= right - 118 && x <= right - 24)
       editing_bus_count_ = std::min(5, editing_bus_count_ + 1);
-    status_ = "Traffic count: " + std::to_string(editing_bus_count_) + " bus(es)";
+    status_ = "Traffic count: " + std::to_string(editing_bus_count_) + " vehicle(s)";
     return 1;
   }
   if (y >= top - 492 && y <= top - 460) {
@@ -959,14 +959,14 @@ void RouteEditor::move(float metres) {
   current_.y = terrain_y(current_.x, current_.z, current_.y);
   spin_ += std::abs(metres) / 3.0f;
   spin_ -= std::floor(spin_);
-  status_ = metres >= 0.0f ? "Bus moved forward" : "Bus moved backward";
+  status_ = metres >= 0.0f ? "Vehicle moved forward" : "Vehicle moved backward";
   show(spin_, 0.0f);
 }
 
 void RouteEditor::turn(float degrees) {
   if (state_ != RouteEditorState::Editing) return;
   current_.heading = normalize_heading(current_.heading + degrees);
-  status_ = degrees < 0.0f ? "Bus turned left" : "Bus turned right";
+  status_ = degrees < 0.0f ? "Vehicle turned left" : "Vehicle turned right";
   show(spin_, degrees < 0.0f ? -1.0f : 1.0f);
 }
 
@@ -1109,7 +1109,7 @@ void RouteEditor::start_saved_route(size_t index) {
   auto& route = traffic_routes_[index];
   if (route.path.size() < 2 || route.running) return;
   if (!build_traffic_vehicles(route, index)) {
-    status_ = "Cannot create buses for " + route.label;
+    status_ = "Cannot create vehicles for " + route.label;
     return;
   }
   route.traffic_blocked = false;
@@ -1118,7 +1118,7 @@ void RouteEditor::start_saved_route(size_t index) {
   route.spawned_count = 1;
   activate_traffic_vehicle(route, 0);
   status_ = "Running: " + route.label + " | 1/" +
-            std::to_string(route.vehicles.size()) + " bus(es)";
+            std::to_string(route.vehicles.size()) + " vehicle(s)";
 }
 
 void RouteEditor::stop_saved_route(size_t index) {
@@ -1653,7 +1653,7 @@ bool RouteEditor::save() {
     }
     route["routes"].push_back(serialize_route(
         editing_route_id_.empty() ? "bus_route_01" : editing_route_id_,
-        editing_route_label_.empty() ? "Apron Bus Route 1" : editing_route_label_,
+        editing_route_label_.empty() ? "Apron Vehicle Route 1" : editing_route_label_,
         model_id_, loop_enabled_, editing_route_autostart_,
         editing_route_speed_mps_, editing_bus_count_, editing_spawn_interval_s_,
         points_));

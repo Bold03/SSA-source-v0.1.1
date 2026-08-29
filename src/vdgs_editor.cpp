@@ -267,17 +267,20 @@ void VdgsEditor::draw_gizmo() {
   float yellow[] = {1.0f, 0.75f, 0.20f};
   float white[] = {0.95f, 0.95f, 1.0f};
   char title[] = "SSA 3D OBJECT GIZMO";
-  char x_axis[] = "--------[ X > ]";
-  char y_axis[] = "[ Y ]";
-  char z_axis[] = "[ Z ]";
+  char x_axis[] = "< X- -------- +X >";
+  char y_plus[] = "[ +Y ]";
+  char y_minus[] = "[ -Y ]";
+  char z_axis[] = "< Z- -------- +Z >";
   char rotate[] = "(  ROTATE  )";
   char help[] = "Drag a handle | Camera remains 3D";
   XPLMDrawString(white, left + 55, top - 22, title, nullptr,
                  xplmFont_Proportional);
-  XPLMDrawString(red, cx, cy, x_axis, nullptr, xplmFont_Proportional);
-  XPLMDrawString(green, cx - 12, cy + 72, y_axis, nullptr,
+  XPLMDrawString(red, cx - 70, cy, x_axis, nullptr, xplmFont_Proportional);
+  XPLMDrawString(green, cx - 18, cy + 72, y_plus, nullptr,
                  xplmFont_Proportional);
-  XPLMDrawString(blue, cx - 78, cy - 58, z_axis, nullptr,
+  XPLMDrawString(green, cx - 18, cy + 40, y_minus, nullptr,
+                 xplmFont_Proportional);
+  XPLMDrawString(blue, cx - 70, cy - 48, z_axis, nullptr,
                  xplmFont_Proportional);
   XPLMDrawString(yellow, cx - 45, cy - 92, rotate, nullptr,
                  xplmFont_Proportional);
@@ -323,11 +326,11 @@ int VdgsEditor::gizmo_mouse(int x, int y, XPLMMouseStatus status) {
   const int cx = (left + right) / 2;
   const int cy = (top + bottom) / 2;
   if (status == xplm_MouseDown) {
-    if (x >= cx && x <= cx + 115 && y >= cy - 18 && y <= cy + 24)
+    if (x >= cx - 95 && x <= cx + 95 && y >= cy - 18 && y <= cy + 24)
       gizmo_drag_ = GizmoDrag::MoveX;
-    else if (x >= cx - 35 && x <= cx + 35 && y >= cy + 45 && y <= cy + 105)
+    else if (x >= cx - 40 && x <= cx + 40 && y >= cy + 30 && y <= cy + 105)
       gizmo_drag_ = GizmoDrag::MoveY;
-    else if (x >= cx - 105 && x <= cx - 35 && y >= cy - 82 && y <= cy - 28)
+    else if (x >= cx - 95 && x <= cx + 95 && y >= cy - 68 && y <= cy - 25)
       gizmo_drag_ = GizmoDrag::MoveZ;
     else if (x >= cx - 75 && x <= cx + 75 && y >= cy - 115 && y <= cy - 70)
       gizmo_drag_ = GizmoDrag::Rotate;
@@ -347,9 +350,9 @@ int VdgsEditor::gizmo_mouse(int x, int y, XPLMMouseStatus status) {
   const float dy = static_cast<float>(y - drag_last_y_);
   drag_last_x_ = x;
   drag_last_y_ = y;
-  if (gizmo_drag_ == GizmoDrag::MoveX) move_side(-dx * 0.05f);
+  if (gizmo_drag_ == GizmoDrag::MoveX) move_world_x(dx * 0.05f);
   else if (gizmo_drag_ == GizmoDrag::MoveY) adjust_altitude(dy * 0.02f);
-  else if (gizmo_drag_ == GizmoDrag::MoveZ) move_forward(-dy * 0.05f);
+  else if (gizmo_drag_ == GizmoDrag::MoveZ) move_world_z(dx * 0.05f);
   else if (gizmo_drag_ == GizmoDrag::Rotate) turn(-dx * 0.5f);
   return 1;
 }
@@ -374,6 +377,22 @@ void VdgsEditor::move_side(float metres) {
   const float angle = heading_ * pi / 180.0f;
   x_ += std::cos(angle) * metres;
   z_ += std::sin(angle) * metres;
+  ground_y_ = terrain_y(x_, z_, ground_y_);
+  y_ = ground_y_ + altitude_offset_m_;
+  show_preview();
+}
+
+void VdgsEditor::move_world_x(float metres) {
+  if (state_ != VdgsEditorState::Placing) return;
+  x_ += metres;
+  ground_y_ = terrain_y(x_, z_, ground_y_);
+  y_ = ground_y_ + altitude_offset_m_;
+  show_preview();
+}
+
+void VdgsEditor::move_world_z(float metres) {
+  if (state_ != VdgsEditorState::Placing) return;
+  z_ += metres;
   ground_y_ = terrain_y(x_, z_, ground_y_);
   y_ = ground_y_ + altitude_offset_m_;
   show_preview();

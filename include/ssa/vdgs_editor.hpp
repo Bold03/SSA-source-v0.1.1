@@ -34,6 +34,8 @@ public:
              float aircraft_heading);
   void move_forward(float metres);
   void move_side(float metres);
+  void move_world_x(float metres);
+  void move_world_z(float metres);
   void turn(float degrees);
   void adjust_altitude(float metres);
   void cancel();

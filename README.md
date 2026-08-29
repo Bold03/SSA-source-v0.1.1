@@ -1,7 +1,7 @@
 # SSA — Scenery Service Animation
 
 **Developer:** BoldStudio31  
-**Status:** object-anchored 3D placement gizmo beta 0.20.1  
+**Status:** vehicle terminology and 3D placement beta 0.20.3  
 **Targets:** X-Plane 11.50+ and X-Plane 12; Windows, Linux and macOS
 
 SSA is a standalone animation controller for scenery objects. It provides custom
@@ -13,7 +13,16 @@ developers. Open it in a browser, choose a scenery folder and OBJ, and copy the
 sanitized `boldstudio31/ssa/animation/scenery/object` dataref into both Blender
 and `ssa.json`.
 
-## Implemented through 0.20.1
+## Implemented through 0.20.3
+
+- The former `BUS` tablet tab is now `VEHICLES` because background traffic can
+  include apron buses, fuel trucks, service cars and other airport vehicles.
+- Route-planner labels and user-facing status messages use `vehicle`; existing
+  `bus_count` JSON fields remain compatible with older route files.
+
+- Complete bidirectional `X-/X+`, `Y-/Y+`, and `Z-/Z+` placement axes.
+- Gizmo translation uses fixed world axes, so changing object heading no longer
+  changes its movement directions.
 
 - The placement gizmo is projected from the preview object's 3D position and
   follows it while the X-Plane camera moves.
@@ -28,7 +37,7 @@ and `ssa.json`.
 
 - Dynamic custom datarefs loaded from each scenery package's `ssa.json`.
 - Smooth open/close animation with configurable speed.
-- Tablet-style native X-Plane window with Hangar, Jetway, VDGS and Bus tabs.
+- Tablet-style native X-Plane window with Hangar, Jetway, VDGS and Vehicles tabs.
 - Automatic VDGS acquisition with lateral arrows, moving T distance marker,
   SLOW, STOP and overshoot protection.
 - Developer Mode can load `VDGS.obj` as a live X-Plane instance, move it in

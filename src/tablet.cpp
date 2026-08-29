@@ -71,19 +71,19 @@ void Tablet::draw_impl() {
   XPLMGetWindowGeometry(window_, &l, &t, &r, &b);
   label(l + 22, t - 35, "BOLDSTUDIO31  |  SSA", 0.25f, 0.95f, 0.65f);
   const char* tabs = developer_mode_
-      ? "[HANGAR]  JETWAY  VDGS  SET  DEV  BUS"
+      ? "[HANGAR] JETWAY VDGS SET DEV VEHICLES"
       : "[ HANGAR ]   JETWAY   VDGS   SETTINGS";
   if (tab_ == 1) tabs = developer_mode_
-      ? "HANGAR  [JETWAY]  VDGS  SET  DEV  BUS"
+      ? "HANGAR [JETWAY] VDGS SET DEV VEHICLES"
       : "HANGAR   [ JETWAY ]   VDGS   SETTINGS";
   else if (tab_ == 5) tabs = developer_mode_
-      ? "HANGAR  JETWAY  [VDGS]  SET  DEV  BUS"
+      ? "HANGAR JETWAY [VDGS] SET DEV VEHICLES"
       : "HANGAR   JETWAY   [ VDGS ]   SETTINGS";
-  else if (tab_ == 2) tabs = "HANGAR  JETWAY  VDGS  SET  DEV  [BUS]";
+  else if (tab_ == 2) tabs = "HANGAR JETWAY VDGS SET DEV [VEHICLES]";
   else if (tab_ == 3) tabs = developer_mode_
-      ? "HANGAR  JETWAY  VDGS  [SET]  DEV  BUS"
+      ? "HANGAR JETWAY VDGS [SET] DEV VEHICLES"
       : "HANGAR   JETWAY   VDGS   [ SETTINGS ]";
-  else if (tab_ == 4) tabs = "HANGAR  JETWAY  VDGS  SET  [DEV]  BUS";
+  else if (tab_ == 4) tabs = "HANGAR JETWAY VDGS SET [DEV] VEHICLES";
   label(l + 22, t - 70, tabs);
 
   if (tab_ == 3) {
@@ -139,7 +139,7 @@ void Tablet::draw_impl() {
       }
     } else if (editor_state == RouteEditorState::Idle) {
       label(l + 22, t - 145, route_editor_.status().c_str());
-      button(l + 22, t - 165, l + 245, t - 205, "PLAN BUS ROUTE");
+      button(l + 22, t - 165, l + 245, t - 205, "PLAN VEHICLE ROUTE");
       button(l + 265, t - 165, r - 22, t - 205, "PLACE VDGS");
       label(l + 22, t - 230, "Click the apron to add automatic Bezier anchors.", 0.75f, 0.85f, 0.95f);
       label(l + 22, t - 252, vdgs_editor_.status().c_str(), 0.55f, 0.85f, 0.75f);
@@ -242,9 +242,9 @@ void Tablet::draw_impl() {
     label(l + 22, t - 105, automatic_ ? "Automatic jetway: ON" : "Automatic jetway: OFF");
     label(l + 22, t - 130, "Turboprop: 0 | Narrow: 1 | Wide: by forward doors");
   } else if (tab_ == 2) {
-    label(l + 22, t - 105, "BACKGROUND BUS TRAFFIC", 0.25f, 0.95f, 0.65f);
+    label(l + 22, t - 105, "BACKGROUND VEHICLE TRAFFIC", 0.25f, 0.95f, 0.65f);
     if (!route_editor_.saved_route_available()) {
-      label(l + 22, t - 150, "No saved bus route found.", 1.0f, 0.65f, 0.35f);
+      label(l + 22, t - 150, "No saved vehicle route found.", 1.0f, 0.65f, 0.35f);
       label(l + 22, t - 185, "A scenery developer must create and save a route first.",
             0.75f, 0.85f, 0.95f);
     } else {
@@ -285,7 +285,7 @@ void Tablet::draw_impl() {
         } else {
           std::snprintf(traffic_detail, sizeof(traffic_detail),
                         "ACTIVE %zu/%d | %s", active_count, route->bus_count,
-                        route->running ? "ALL BUSES SPAWNED" : "TRAFFIC STOPPED");
+                        route->running ? "ALL VEHICLES SPAWNED" : "TRAFFIC STOPPED");
         }
         label(l + 38, route_y - 18, traffic_detail, 0.55f, 0.85f, 0.75f);
         button(r - 206, route_y + 12, r - 150, route_y - 16, "EDIT",
