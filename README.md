@@ -1,7 +1,7 @@
 # SSA — Scenery Service Animation
 
 **Developer:** BoldStudio31  
-**Status:** VDGS gate selection and approach corridors beta 0.19.0  
+**Status:** 3D object-placement gizmo beta 0.20.0  
 **Targets:** X-Plane 11.50+ and X-Plane 12; Windows, Linux and macOS
 
 SSA is a standalone animation controller for scenery objects. It provides custom
@@ -13,7 +13,14 @@ developers. Open it in a browser, choose a scenery folder and OBJ, and copy the
 sanitized `boldstudio31/ssa/animation/scenery/object` dataref into both Blender
 and `ssa.json`.
 
-## Implemented through 0.19.0
+## Implemented through 0.20.0
+
+- Perspective 3D placement remains in the normal X-Plane camera.
+- Blender-style screen gizmo provides drag handles for X, Y (altitude), Z,
+  and heading rotation.
+- The gizmo only occupies a small overlay, leaving the rest of the view free
+  for X-Plane camera controls.
+- Existing tablet movement buttons remain available for precise numeric nudges.
 
 - Dynamic custom datarefs loaded from each scenery package's `ssa.json`.
 - Smooth open/close animation with configurable speed.

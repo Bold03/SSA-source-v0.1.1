@@ -2,6 +2,7 @@
 
 #include <XPLMInstance.h>
 #include <XPLMScenery.h>
+#include <XPLMDisplay.h>
 #include <array>
 #include <string>
 #include <vector>
@@ -47,6 +48,16 @@ public:
   float heading() const { return heading_; }
 
 private:
+  enum class GizmoDrag { None, MoveX, MoveY, MoveZ, Rotate };
+  static void draw_gizmo_callback(XPLMWindowID window, void* refcon);
+  static int gizmo_mouse_callback(XPLMWindowID window, int x, int y,
+                                  XPLMMouseStatus status, void* refcon);
+  static XPLMCursorStatus gizmo_cursor_callback(XPLMWindowID window, int x,
+                                                int y, void* refcon);
+  void open_gizmo();
+  void close_gizmo();
+  void draw_gizmo();
+  int gizmo_mouse(int x, int y, XPLMMouseStatus status);
   static float normalize_heading(float heading);
   float terrain_y(float x, float z, float fallback) const;
   void show_preview();
@@ -72,6 +83,10 @@ private:
   XPLMObjectRef preview_object_{};
   XPLMInstanceRef preview_instance_{};
   XPLMProbeRef probe_{};
+  XPLMWindowID gizmo_window_{};
+  GizmoDrag gizmo_drag_{GizmoDrag::None};
+  int drag_last_x_{};
+  int drag_last_y_{};
   std::vector<VdgsPlacement> placements_;
 };
 

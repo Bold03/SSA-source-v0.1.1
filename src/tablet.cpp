@@ -106,7 +106,7 @@ void Tablet::draw_impl() {
 
   if (tab_ == 4 && developer_mode_) {
     if (vdgs_editor_.state() == VdgsEditorState::Placing) {
-      label(l + 22, t - 105, "DEVELOPER TOOLS  |  VDGS PLACEMENT", 1.0f, 0.72f, 0.20f);
+      label(l + 22, t - 105, "DEVELOPER TOOLS  |  3D OBJECT PLACEMENT", 1.0f, 0.72f, 0.20f);
       char placement[220];
       std::snprintf(placement, sizeof(placement),
                     "Lat %.8f  Lon %.8f  Alt %.2f m  Heading %.1f",
@@ -124,7 +124,7 @@ void Tablet::draw_impl() {
       button(l + 362, t - 232, r - 22, t - 264, "ROTATE +5");
       button(l + 22, t - 274, l + 152, t - 306, "CANCEL", 1.0f, 0.72f, 0.20f);
       label(l + 172, t - 292, vdgs_editor_.status().c_str(), 0.75f, 0.85f, 0.95f);
-      label(l + 22, b + 42, "VDGS is a live X-Plane instance; SAVE writes ssa.json.",
+      label(l + 22, b + 42, "Drag the 3D gizmo; buttons remain for precise adjustment.",
             1.0f, 0.72f, 0.20f);
       return;
     }
