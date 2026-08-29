@@ -162,9 +162,10 @@ void Tablet::draw_impl() {
                                         ? "WAITING"
                                         : route->running ? "RUNNING" : "STOPPED";
         char route_line[180];
-        std::snprintf(route_line, sizeof(route_line), "%zu. %.15s | %s | %s | %.0f km/h",
+        std::snprintf(route_line, sizeof(route_line), "%zu. %.13s | %s | x%d | %s | %.0f km/h",
                       i + 1, route->label.c_str(), traffic_state,
-                      route->loop ? "LOOP" : "ONE WAY", route->cruise_speed_mps * 3.6f);
+                      route->bus_count, route->loop ? "LOOP" : "ONE WAY",
+                      route->cruise_speed_mps * 3.6f);
         label(l + 22, route_y, route_line);
         button(r - 206, route_y + 12, r - 150, route_y - 16, "EDIT",
                0.30f, 0.80f, 1.0f);

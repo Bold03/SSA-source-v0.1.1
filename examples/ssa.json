@@ -33,6 +33,11 @@
       "id": "lion_bus",
       "label": "Lion Apron Bus",
       "object": "object/Lion_bus.obj"
+    },
+    {
+      "id": "aerotrans_bus",
+      "label": "Aerotrans Apron Bus",
+      "object": "object/AERO_bus.obj"
     }
   ],
   "objects": [

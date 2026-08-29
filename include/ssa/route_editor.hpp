@@ -24,6 +24,19 @@ struct RoutePoint {
   bool custom_handles{};
 };
 
+struct TrafficVehicle {
+  std::string model;
+  bool active{};
+  bool running{};
+  bool traffic_blocked{};
+  float current_speed_mps{};
+  float spin{};
+  float steering{};
+  size_t path_index{1};
+  RoutePoint current{};
+  XPLMInstanceRef instance{};
+};
+
 struct TrafficRoute {
   std::string id;
   std::string label;
@@ -33,16 +46,15 @@ struct TrafficRoute {
   bool running{};
   float speed_mps{4.0f};
   float cruise_speed_mps{4.0f};
-  float current_speed_mps{};
-  float spin{};
-  float steering{};
   bool traffic_blocked{};
-  size_t path_index{1};
-  RoutePoint current{};
+  int bus_count{1};
+  float spawn_interval_s{45.0f};
+  float spawn_clock{};
+  size_t spawned_count{};
   std::vector<RoutePoint> anchors;
   std::vector<RoutePoint> path;
   std::vector<float> distance_remaining;
-  XPLMInstanceRef instance{};
+  std::vector<TrafficVehicle> vehicles;
 };
 
 class RouteEditor {
@@ -97,7 +109,12 @@ private:
                          std::vector<RoutePoint>& path,
                          std::vector<float>& distance_remaining);
   void update_traffic_route(TrafficRoute& route, float elapsed_seconds);
-  float traffic_speed_limit(const TrafficRoute& route) const;
+  void update_traffic_vehicle(TrafficRoute& route, TrafficVehicle& vehicle,
+                              float elapsed_seconds);
+  float traffic_speed_limit(const TrafficRoute& route,
+                            const TrafficVehicle& vehicle) const;
+  bool build_traffic_vehicles(TrafficRoute& route, size_t route_index);
+  void activate_traffic_vehicle(TrafficRoute& route, size_t vehicle_index);
   XPLMObjectRef object_for_model(const std::string& id) const;
   void recreate_editor_instance();
   float adaptive_speed(float base_speed, float route_length) const;
@@ -130,6 +147,7 @@ private:
   std::vector<std::string> model_labels_;
   std::vector<XPLMObjectRef> model_objects_;
   size_t selected_model_index_{};
+  bool selected_random_model_{};
   std::string scenery_directory_;
   std::string route_path_;
   std::string status_{"No vehicle model configured"};
@@ -177,6 +195,8 @@ private:
   bool editing_route_autostart_{true};
   bool editing_route_was_running_{};
   float editing_route_speed_mps_{4.0f};
+  int editing_bus_count_{1};
+  float editing_spawn_interval_s_{45.0f};
   std::string editing_route_id_;
   std::string editing_route_label_;
   size_t test_index_{};

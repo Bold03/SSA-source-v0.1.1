@@ -52,16 +52,31 @@ returns to the same planning view. `steering_multiplier` reverses an OBJ whose
 front-wheel animation faces the wrong direction. SSA writes `ssa_routes.json`
 beside the scenery's `ssa.json`.
 
+The planner's right panel also configures the Traffic Manager for that route:
+
+- `BUS COUNT`: one to five independent buses.
+- `SPAWN`: delay between buses from 5 to 300 seconds.
+- `SPEED`: base route speed from 5 to 50 km/h; normal adaptive long-route
+  speed and corner braking still apply.
+- `BUS`: choose one fixed OBJ or `RANDOM MODELS` to distribute the available
+  configured models across the route.
+
+These values are written to `ssa_routes.json` schema 4 as `bus_count`,
+`spawn_interval_s`, `speed_mps`, and `model`. Older route schemas load with
+one bus and a 45-second interval, so existing scenery routes do not need to be
+rebuilt.
+
 After SAVE, reload SSA or restart X-Plane. SSA reads `ssa_routes.json`, places
 the background bus at the first anchor and starts saved routes automatically.
 The TRAFFIC tab beside DEV provides manual START TRAFFIC and STOP TRAFFIC
 controls and is visible only in Developer Mode. Traffic continues when
 Developer Mode is disabled. A closed route continues running when LOOP is ON;
-an open route brakes and stops at its final anchor. Future RealOps passenger
+an open route brakes at its final anchor and then leaves the background traffic
+system so later buses can clear the same endpoint. Future RealOps passenger
 buses are intentionally separate from this background traffic system.
 
 SSA supports up to sixteen saved background routes per scenery with the current
-configured vehicle model. Each new PLAN
+configured vehicle models. Each new PLAN
 ROUTE session receives the next free `bus_route_XX` identifier, and SAVE appends
 it to `ssa_routes.json` without replacing earlier routes. The TRAFFIC tab can
 start or stop each of the first five routes separately and provides START ALL

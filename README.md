@@ -1,7 +1,7 @@
 # SSA — Scenery Service Animation
 
 **Developer:** BoldStudio31  
-**Status:** hard-separation multi-model bus traffic beta 0.16.1  
+**Status:** multi-bus Traffic Manager beta 0.17.0  
 **Targets:** X-Plane 11.50+ and X-Plane 12; Windows, Linux and macOS
 
 SSA is a standalone animation controller for scenery objects. It provides custom
@@ -13,7 +13,7 @@ developers. Open it in a browser, choose a scenery folder and OBJ, and copy the
 sanitized `boldstudio31/ssa/animation/scenery/object` dataref into both Blender
 and `ssa.json`.
 
-## Implemented through 0.16.1
+## Implemented through 0.17.0
 
 - Dynamic custom datarefs loaded from each scenery package's `ssa.json`.
 - Smooth open/close animation with configurable speed.
@@ -110,9 +110,10 @@ and `ssa.json`.
   preview instance immediately, and writes the selected model ID into that
   route. Saved routes restore their own Gapura, Lion, or future compatible OBJ
   even when Developer Mode is disabled.
-- The supplied example configuration registers `Gapura_bus.obj` and
-  `Lion_bus.obj`. Both use the same wheel-spin, steering, dimensions and vehicle
-  movement profile, so they can share the existing route physics safely.
+- The supplied example configuration registers `Gapura_bus.obj`,
+  `Lion_bus.obj` and `AERO_bus.obj`. All three use the same wheel-spin,
+  steering, dimensions and vehicle movement profile, so they can share the
+  existing route physics safely.
 - Every saved route in the TRAFFIC tab has a separate EDIT button. Editing
   reopens the original automatic/custom Bezier anchors in the top-down planner,
   restores its bus model and LOOP state, and frames the route in the camera.
@@ -126,6 +127,21 @@ and `ssa.json`.
   matching speeds, allowing an unsafe overlap to clear instead of persisting.
 - Perpendicular routes use stable right-of-way while buses are close, avoiding
   both a crossing collision and a permanent two-bus deadlock.
+- Every saved route can run one to five independent buses. The Create/Edit
+  Route side panel controls bus count, spawn interval and route speed without
+  editing JSON by hand.
+- Additional buses leave the first waypoint at a configurable 5–300 second
+  interval. A delayed bus waits when the spawn area is occupied instead of
+  appearing inside another vehicle.
+- A route can use one fixed bus model or `RANDOM MODELS`. Random traffic is
+  distributed reproducibly across the configured Gapura, Lion, Aerotrans and
+  future compatible vehicle objects.
+- Traffic Manager settings are persisted in `ssa_routes.json` schema 4.
+  Older route files remain compatible and default to one bus with a 45-second
+  spawn interval.
+- The TRAFFIC tab shows the configured bus quantity (`xN`) beside each route.
+  Collision avoidance compares every active vehicle instance, including buses
+  sharing the same route.
 - Nearby hangar list (2 km) and small jetway activation radius (35 m).
 - Per-channel automatic jetway targets calculated from aircraft position,
   heading, door profile and scenery-configured movement limits.

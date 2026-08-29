@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <stdexcept>
 #ifdef _WIN32
 #ifndef NOMINMAX
@@ -34,7 +35,8 @@ void RouteEditor::unload() {
   if (planner_window_) XPLMDestroyWindow(planner_window_);
   if (instance_) XPLMDestroyInstance(instance_);
   for (auto& route : traffic_routes_)
-    if (route.instance) XPLMDestroyInstance(route.instance);
+    for (auto& vehicle : route.vehicles)
+      if (vehicle.instance) XPLMDestroyInstance(vehicle.instance);
   for (auto object : model_objects_)
     if (object) XPLMUnloadObject(object);
   if (probe_) XPLMDestroyProbe(probe_);
@@ -52,6 +54,7 @@ void RouteEditor::unload() {
   model_labels_.clear();
   model_objects_.clear();
   selected_model_index_ = 0;
+  selected_random_model_ = false;
   traffic_routes_.clear();
   test_points_.clear();
   test_distance_remaining_.clear();
@@ -61,6 +64,8 @@ void RouteEditor::unload() {
   editing_route_autostart_ = true;
   editing_route_was_running_ = false;
   editing_route_speed_mps_ = speed_mps_;
+  editing_bus_count_ = 1;
+  editing_spawn_interval_s_ = 45.0f;
   editing_route_id_.clear();
   editing_route_label_.clear();
   current_speed_mps_ = 0.0f;
@@ -142,6 +147,7 @@ bool RouteEditor::load(const std::string& xplane_root) {
         return false;
       }
       selected_model_index_ = 0;
+      selected_random_model_ = false;
       model_id_ = model_ids_.front();
       model_label_ = model_labels_.front();
       object_ = model_objects_.front();
@@ -177,7 +183,8 @@ void RouteEditor::schedule_saved_route_load() {
 
 bool RouteEditor::load_saved_route() {
   for (auto& route : traffic_routes_)
-    if (route.instance) XPLMDestroyInstance(route.instance);
+    for (auto& vehicle : route.vehicles)
+      if (vehicle.instance) XPLMDestroyInstance(vehicle.instance);
   traffic_routes_.clear();
   if (route_path_.empty() || !fs::exists(route_path_)) return false;
   try {
@@ -185,8 +192,6 @@ bool RouteEditor::load_saved_route() {
     const json root = json::parse(input);
     if (!root.contains("routes") || !root.at("routes").is_array() ||
         root.at("routes").empty()) return false;
-    const char* datarefs[] = {"boldstudio31/ssa/vehicle/wheel_spin",
-                              "boldstudio31/ssa/vehicle/steering", nullptr};
     size_t fallback_number = 1;
     for (const auto& route_json : root.at("routes")) {
       if (traffic_routes_.size() >= 16) break;
@@ -199,14 +204,15 @@ bool RouteEditor::load_saved_route() {
       route.label = route_json.value(
           "label", std::string("Apron Bus Route ") + std::to_string(fallback_number));
       route.model = route_json.value("model", model_ids_.front());
-      XPLMObjectRef route_object = object_for_model(route.model);
-      if (!route_object) {
+      if (route.model != "random" && !object_for_model(route.model)) {
         route.model = model_ids_.front();
-        route_object = model_objects_.front();
       }
       route.loop = route_json.value("loop", false);
       route.autostart = route_json.value("autostart", true);
       route.speed_mps = std::clamp(route_json.value("speed_mps", speed_mps_), 0.5f, 15.0f);
+      route.bus_count = std::clamp(route_json.value("bus_count", 1), 1, 5);
+      route.spawn_interval_s = std::clamp(
+          route_json.value("spawn_interval_s", 45.0f), 5.0f, 300.0f);
       for (const auto& waypoint : route_json.at("waypoints")) {
         if (!waypoint.contains("latitude") || !waypoint.contains("longitude")) continue;
         double x{}, y{}, z{};
@@ -243,10 +249,7 @@ bool RouteEditor::load_saved_route() {
       const float route_length = route.distance_remaining.empty()
                                      ? 0.0f : route.distance_remaining.front();
       route.cruise_speed_mps = adaptive_speed(route.speed_mps, route_length);
-      route.current = route.path.front();
-      route.instance = XPLMCreateInstance(route_object, datarefs);
-      if (!route.instance) continue;
-      show_instance(route.instance, route.current, 0.0f, 0.0f);
+      if (!build_traffic_vehicles(route, traffic_routes_.size())) continue;
       traffic_routes_.push_back(std::move(route));
       ++fallback_number;
     }
@@ -257,7 +260,8 @@ bool RouteEditor::load_saved_route() {
   } catch (const std::exception& e) {
     status_ = std::string("Route load failed: ") + e.what();
     for (auto& route : traffic_routes_)
-      if (route.instance) XPLMDestroyInstance(route.instance);
+      for (auto& vehicle : route.vehicles)
+        if (vehicle.instance) XPLMDestroyInstance(vehicle.instance);
     traffic_routes_.clear();
     return false;
   }
@@ -282,11 +286,61 @@ XPLMObjectRef RouteEditor::object_for_model(const std::string& id) const {
   return index < model_objects_.size() ? model_objects_[index] : nullptr;
 }
 
+bool RouteEditor::build_traffic_vehicles(TrafficRoute& route, size_t route_index) {
+  for (auto& vehicle : route.vehicles)
+    if (vehicle.instance) XPLMDestroyInstance(vehicle.instance);
+  route.vehicles.clear();
+  if (route.path.size() < 2 || model_objects_.empty()) return false;
+  const char* datarefs[] = {"boldstudio31/ssa/vehicle/wheel_spin",
+                            "boldstudio31/ssa/vehicle/steering", nullptr};
+  for (int i = 0; i < route.bus_count; ++i) {
+    TrafficVehicle vehicle;
+    if (route.model == "random") {
+      const size_t seed = std::hash<std::string>{}(route.id) + route_index * 7919u;
+      const size_t model_index =
+          (seed + static_cast<size_t>(i) * 2654435761u) % model_objects_.size();
+      vehicle.model = model_ids_[model_index];
+    } else {
+      vehicle.model = route.model;
+    }
+    XPLMObjectRef vehicle_object = object_for_model(vehicle.model);
+    if (!vehicle_object) {
+      vehicle.model = model_ids_.front();
+      vehicle_object = model_objects_.front();
+    }
+    vehicle.instance = XPLMCreateInstance(vehicle_object, datarefs);
+    if (!vehicle.instance) continue;
+    vehicle.current = route.path.front();
+    route.vehicles.push_back(std::move(vehicle));
+  }
+  route.bus_count = static_cast<int>(route.vehicles.size());
+  route.spawned_count = 0;
+  route.spawn_clock = 0.0f;
+  return !route.vehicles.empty();
+}
+
+void RouteEditor::activate_traffic_vehicle(TrafficRoute& route,
+                                           size_t vehicle_index) {
+  if (vehicle_index >= route.vehicles.size() || route.path.size() < 2) return;
+  auto& vehicle = route.vehicles[vehicle_index];
+  vehicle.current = route.path.front();
+  vehicle.path_index = 1;
+  vehicle.current_speed_mps = 0.0f;
+  vehicle.spin = 0.0f;
+  vehicle.steering = 0.0f;
+  vehicle.traffic_blocked = false;
+  vehicle.active = true;
+  vehicle.running = true;
+  show_instance(vehicle.instance, vehicle.current, 0.0f, 0.0f);
+}
+
 void RouteEditor::recreate_editor_instance() {
   if (instance_) XPLMDestroyInstance(instance_);
   instance_ = nullptr;
-  if (selected_model_index_ >= model_objects_.size()) return;
-  object_ = model_objects_[selected_model_index_];
+  if (model_objects_.empty()) return;
+  const size_t preview_index = selected_random_model_ ? 0 : selected_model_index_;
+  if (preview_index >= model_objects_.size()) return;
+  object_ = model_objects_[preview_index];
   const char* datarefs[] = {"boldstudio31/ssa/vehicle/wheel_spin",
                             "boldstudio31/ssa/vehicle/steering", nullptr};
   instance_ = XPLMCreateInstance(object_, datarefs);
@@ -296,12 +350,20 @@ void RouteEditor::recreate_editor_instance() {
 void RouteEditor::select_model(int direction) {
   if (state_ == RouteEditorState::Unavailable || state_ == RouteEditorState::Testing ||
       model_objects_.empty() || direction == 0) return;
-  const int count = static_cast<int>(model_objects_.size());
-  int selected = static_cast<int>(selected_model_index_);
+  const int count = static_cast<int>(model_objects_.size()) + 1;
+  int selected = selected_random_model_
+                     ? static_cast<int>(model_objects_.size())
+                     : static_cast<int>(selected_model_index_);
   selected = (selected + (direction > 0 ? 1 : -1) + count) % count;
-  selected_model_index_ = static_cast<size_t>(selected);
-  model_id_ = model_ids_[selected_model_index_];
-  model_label_ = model_labels_[selected_model_index_];
+  selected_random_model_ = selected == static_cast<int>(model_objects_.size());
+  if (selected_random_model_) {
+    model_id_ = "random";
+    model_label_ = "RANDOM MODELS";
+  } else {
+    selected_model_index_ = static_cast<size_t>(selected);
+    model_id_ = model_ids_[selected_model_index_];
+    model_label_ = model_labels_[selected_model_index_];
+  }
   recreate_editor_instance();
   status_ = "Selected bus: " + model_label_;
 }
@@ -364,6 +426,8 @@ void RouteEditor::create_route(double latitude, double longitude, float heading)
   editing_route_autostart_ = true;
   editing_route_was_running_ = false;
   editing_route_speed_mps_ = speed_mps_;
+  editing_bus_count_ = 1;
+  editing_spawn_interval_s_ = 45.0f;
   size_t route_number = 1;
   for (;;) {
     char route_id[32];
@@ -505,6 +569,24 @@ void RouteEditor::draw_planner() {
   draw_button(right - 220, top - 260, right - 24, top - 292, model_button);
   draw_button(right - 220, top - 300, right - 126, top - 332, "< PREV");
   draw_button(right - 118, top - 300, right - 24, top - 332, "NEXT >");
+  char count_button[64];
+  std::snprintf(count_button, sizeof(count_button), "BUS COUNT: %d",
+                editing_bus_count_);
+  draw_button(right - 220, top - 340, right - 24, top - 372, count_button);
+  draw_button(right - 220, top - 380, right - 126, top - 412, "- BUS");
+  draw_button(right - 118, top - 380, right - 24, top - 412, "+ BUS");
+  char interval_button[64];
+  std::snprintf(interval_button, sizeof(interval_button), "SPAWN: %.0f SEC",
+                editing_spawn_interval_s_);
+  draw_button(right - 220, top - 420, right - 24, top - 452, interval_button);
+  draw_button(right - 220, top - 460, right - 126, top - 492, "- 10 SEC");
+  draw_button(right - 118, top - 460, right - 24, top - 492, "+ 10 SEC");
+  char speed_button[64];
+  std::snprintf(speed_button, sizeof(speed_button), "SPEED: %.0f KM/H",
+                editing_route_speed_mps_ * 3.6f);
+  draw_button(right - 220, top - 500, right - 24, top - 532, speed_button);
+  draw_button(right - 220, top - 540, right - 126, top - 572, "- 5 KM/H");
+  draw_button(right - 118, top - 540, right - 24, top - 572, "+ 5 KM/H");
   const float width = static_cast<float>(std::max(1, right - left));
   const float height = static_cast<float>(std::max(1, top - bottom));
   const float half_width_m = planner_half_width();
@@ -665,7 +747,37 @@ int RouteEditor::planner_mouse(int x, int y, XPLMMouseStatus status) {
     else if (x >= right - 118 && x <= right - 24) select_model(1);
     return 1;
   }
-  if (x >= right - 230 && y <= top - 170 && y >= top - 340) return 1;
+  if (y >= top - 412 && y <= top - 380) {
+    if (x >= right - 220 && x <= right - 126)
+      editing_bus_count_ = std::max(1, editing_bus_count_ - 1);
+    else if (x >= right - 118 && x <= right - 24)
+      editing_bus_count_ = std::min(5, editing_bus_count_ + 1);
+    status_ = "Traffic count: " + std::to_string(editing_bus_count_) + " bus(es)";
+    return 1;
+  }
+  if (y >= top - 492 && y <= top - 460) {
+    if (x >= right - 220 && x <= right - 126)
+      editing_spawn_interval_s_ = std::max(5.0f, editing_spawn_interval_s_ - 10.0f);
+    else if (x >= right - 118 && x <= right - 24)
+      editing_spawn_interval_s_ = std::min(300.0f, editing_spawn_interval_s_ + 10.0f);
+    status_ = "Spawn interval: " +
+              std::to_string(static_cast<int>(editing_spawn_interval_s_)) + " seconds";
+    return 1;
+  }
+  if (y >= top - 572 && y <= top - 540) {
+    constexpr float five_kmh_mps = 5.0f / 3.6f;
+    if (x >= right - 220 && x <= right - 126)
+      editing_route_speed_mps_ =
+          std::max(5.0f / 3.6f, editing_route_speed_mps_ - five_kmh_mps);
+    else if (x >= right - 118 && x <= right - 24)
+      editing_route_speed_mps_ =
+          std::min(50.0f / 3.6f, editing_route_speed_mps_ + five_kmh_mps);
+    status_ = "Route speed: " +
+              std::to_string(static_cast<int>(std::lround(
+                  editing_route_speed_mps_ * 3.6f))) + " km/h";
+    return 1;
+  }
+  if (x >= right - 230 && y <= top - 170 && y >= top - 580) return 1;
   // Keep the title/toolbar band from accidentally creating an anchor.
   if (y > top - 90) return 1;
   anchor_drag_index_ = -1;
@@ -978,7 +1090,7 @@ void RouteEditor::start_test() {
   current_ = test_points_.front();
   const float route_length = test_distance_remaining_.empty()
                                  ? 0.0f : test_distance_remaining_.front();
-  test_cruise_speed_mps_ = adaptive_speed(speed_mps_, route_length);
+  test_cruise_speed_mps_ = adaptive_speed(editing_route_speed_mps_, route_length);
   test_index_ = 1;
   spin_ = 0.0f;
   current_speed_mps_ = 0.0f;
@@ -991,26 +1103,33 @@ void RouteEditor::start_test() {
 void RouteEditor::start_saved_route(size_t index) {
   if (index >= traffic_routes_.size()) return;
   auto& route = traffic_routes_[index];
-  if (!route.instance || route.path.size() < 2 || route.running) return;
-  route.current = route.path.front();
-  route.path_index = 1;
-  route.current_speed_mps = 0.0f;
-  route.spin = 0.0f;
-  route.steering = 0.0f;
+  if (route.path.size() < 2 || route.running) return;
+  if (!build_traffic_vehicles(route, index)) {
+    status_ = "Cannot create buses for " + route.label;
+    return;
+  }
   route.traffic_blocked = false;
   route.running = true;
-  show_instance(route.instance, route.current, route.spin, route.steering);
-  status_ = "Running: " + route.label;
+  route.spawn_clock = 0.0f;
+  route.spawned_count = 1;
+  activate_traffic_vehicle(route, 0);
+  status_ = "Running: " + route.label + " | 1/" +
+            std::to_string(route.vehicles.size()) + " bus(es)";
 }
 
 void RouteEditor::stop_saved_route(size_t index) {
   if (index >= traffic_routes_.size()) return;
   auto& route = traffic_routes_[index];
   route.running = false;
-  route.current_speed_mps = 0.0f;
-  route.steering = 0.0f;
   route.traffic_blocked = false;
-  show_instance(route.instance, route.current, route.spin, 0.0f);
+  for (auto& vehicle : route.vehicles) {
+    vehicle.running = false;
+    vehicle.current_speed_mps = 0.0f;
+    vehicle.steering = 0.0f;
+    vehicle.traffic_blocked = false;
+    if (vehicle.active)
+      show_instance(vehicle.instance, vehicle.current, vehicle.spin, 0.0f);
+  }
   status_ = "Stopped: " + route.label;
 }
 
@@ -1028,21 +1147,33 @@ void RouteEditor::edit_saved_route(size_t index) {
   editing_route_autostart_ = route.autostart;
   editing_route_was_running_ = route.running;
   editing_route_speed_mps_ = route.speed_mps;
+  editing_bus_count_ = route.bus_count;
+  editing_spawn_interval_s_ = route.spawn_interval_s;
   loop_enabled_ = route.loop;
   points_ = route.anchors;
   current_ = points_.front();
-  spin_ = route.spin;
+  spin_ = route.vehicles.empty() ? 0.0f : route.vehicles.front().spin;
   display_steering_ = 0.0f;
   route.running = false;
-  route.current_speed_mps = 0.0f;
   route.traffic_blocked = false;
+  for (auto& vehicle : route.vehicles) {
+    vehicle.running = false;
+    vehicle.current_speed_mps = 0.0f;
+    vehicle.traffic_blocked = false;
+  }
 
-  const auto found = std::find(model_ids_.begin(), model_ids_.end(), route.model);
-  selected_model_index_ = found == model_ids_.end()
-                              ? 0
-                              : static_cast<size_t>(std::distance(model_ids_.begin(), found));
-  model_id_ = model_ids_[selected_model_index_];
-  model_label_ = model_labels_[selected_model_index_];
+  selected_random_model_ = route.model == "random";
+  if (selected_random_model_) {
+    model_id_ = "random";
+    model_label_ = "RANDOM MODELS";
+  } else {
+    const auto found = std::find(model_ids_.begin(), model_ids_.end(), route.model);
+    selected_model_index_ = found == model_ids_.end()
+                                ? 0
+                                : static_cast<size_t>(std::distance(model_ids_.begin(), found));
+    model_id_ = model_ids_[selected_model_index_];
+    model_label_ = model_labels_[selected_model_index_];
+  }
   recreate_editor_instance();
 
   float min_x = points_.front().x;
@@ -1065,55 +1196,59 @@ void RouteEditor::edit_saved_route(size_t index) {
   open_planner();
 }
 
-float RouteEditor::traffic_speed_limit(const TrafficRoute& route) const {
+float RouteEditor::traffic_speed_limit(const TrafficRoute& route,
+                                       const TrafficVehicle& vehicle) const {
   if (!collision_enabled_) return route.cruise_speed_mps;
 
-  const float heading = route.current.heading * pi / 180.0f;
+  const float heading = vehicle.current.heading * pi / 180.0f;
   const float forward_x = std::sin(heading);
   const float forward_z = -std::cos(heading);
   float speed_limit = route.cruise_speed_mps;
 
-  for (const auto& other : traffic_routes_) {
-    if (&other == &route || !other.instance) continue;
-    const float dx = other.current.x - route.current.x;
-    const float dz = other.current.z - route.current.z;
-    const float distance = std::hypot(dx, dz);
+  const std::less<const TrafficVehicle*> priority;
+  for (const auto& other_route : traffic_routes_) {
+    for (const auto& other : other_route.vehicles) {
+      if (&other == &vehicle || !other.instance || !other.active) continue;
+      const float dx = other.current.x - vehicle.current.x;
+      const float dz = other.current.z - vehicle.current.z;
+      const float distance = std::hypot(dx, dz);
 
     // Routes can share a spawn point. Give the first loaded bus priority so
     // the remaining buses wait instead of spawning inside one another forever.
-    if (distance < 0.5f) {
-      if (&route > &other) speed_limit = 0.0f;
-      continue;
-    }
-    if (distance > collision_detection_m_) continue;
+      if (distance < 0.5f) {
+        if (priority(&other, &vehicle)) speed_limit = 0.0f;
+        continue;
+      }
+      if (distance > collision_detection_m_) continue;
 
-    const float longitudinal = dx * forward_x + dz * forward_z;
-    const float lateral = std::abs(dx * forward_z - dz * forward_x);
-    const float heading_difference =
-        std::abs(heading_delta(route.current.heading, other.current.heading));
+      const float longitudinal = dx * forward_x + dz * forward_z;
+      const float lateral = std::abs(dx * forward_z - dz * forward_x);
+      const float heading_difference =
+          std::abs(heading_delta(vehicle.current.heading, other.current.heading));
 
     // Hard body separation. A following bus must stop when it has already
     // entered the protected distance, even if both buses currently have the
     // same speed. At a crossing, stable load order provides right-of-way and
     // prevents both vehicles from waiting forever.
-    if (distance < collision_stop_distance_m_) {
-      if (heading_difference > 45.0f) {
-        if (&route > &other) speed_limit = 0.0f;
-      } else if (longitudinal > 0.0f &&
-                 lateral <= collision_lane_half_width_m_) {
-        speed_limit = 0.0f;
+      if (distance < collision_stop_distance_m_) {
+        if (heading_difference > 45.0f) {
+          if (priority(&other, &vehicle)) speed_limit = 0.0f;
+        } else if (longitudinal > 0.0f &&
+                   lateral <= collision_lane_half_width_m_) {
+          speed_limit = 0.0f;
+        }
+        continue;
       }
-      continue;
+
+      if (longitudinal <= 0.0f || lateral > collision_lane_half_width_m_) continue;
+
+      const float free_distance = std::max(
+          0.0f, longitudinal - collision_stop_distance_m_);
+      const float other_speed = other.running ? other.current_speed_mps : 0.0f;
+      const float safe_speed = std::sqrt(
+          other_speed * other_speed + 2.0f * braking_mps2_ * free_distance);
+      speed_limit = std::min(speed_limit, safe_speed);
     }
-
-    if (longitudinal <= 0.0f || lateral > collision_lane_half_width_m_) continue;
-
-    const float free_distance = std::max(
-        0.0f, longitudinal - collision_stop_distance_m_);
-    const float other_speed = other.running ? other.current_speed_mps : 0.0f;
-    const float safe_speed = std::sqrt(
-        other_speed * other_speed + 2.0f * braking_mps2_ * free_distance);
-    speed_limit = std::min(speed_limit, safe_speed);
   }
   return speed_limit;
 }
@@ -1151,13 +1286,59 @@ void RouteEditor::stop_test() {
 }
 
 void RouteEditor::update_traffic_route(TrafficRoute& route, float elapsed_seconds) {
-  if (!route.running || route.path_index >= route.path.size() || elapsed_seconds <= 0.0f)
-    return;
-  const auto& target = route.path[route.path_index];
-  const float dx = target.x - route.current.x;
-  const float dz = target.z - route.current.z;
+  if (!route.running || route.vehicles.empty() || elapsed_seconds <= 0.0f) return;
+  route.spawn_clock += elapsed_seconds;
+  route.traffic_blocked = false;
+  while (route.spawned_count < route.vehicles.size()) {
+    const float due = static_cast<float>(route.spawned_count) * route.spawn_interval_s;
+    if (route.spawn_clock < due) break;
+    const auto& spawn = route.path.front();
+    bool spawn_clear = true;
+    for (const auto& other_route : traffic_routes_) {
+      for (const auto& other : other_route.vehicles) {
+        if (!other.active || !other.instance) continue;
+        if (std::hypot(other.current.x - spawn.x, other.current.z - spawn.z) <
+            collision_stop_distance_m_) {
+          spawn_clear = false;
+          break;
+        }
+      }
+      if (!spawn_clear) break;
+    }
+    if (!spawn_clear) {
+      route.traffic_blocked = true;
+      break;
+    }
+    activate_traffic_vehicle(route, route.spawned_count);
+    ++route.spawned_count;
+    status_ = "Spawned " + std::to_string(route.spawned_count) + "/" +
+              std::to_string(route.vehicles.size()) + " on " + route.label;
+  }
+
+  bool any_running = false;
+  for (auto& vehicle : route.vehicles) {
+    if (vehicle.active && vehicle.running)
+      update_traffic_vehicle(route, vehicle, elapsed_seconds);
+    route.traffic_blocked = route.traffic_blocked || vehicle.traffic_blocked;
+    any_running = any_running || vehicle.running;
+  }
+  if (route.spawned_count >= route.vehicles.size() && !any_running) {
+    route.running = false;
+    route.traffic_blocked = false;
+    status_ = "Route complete: " + route.label;
+  }
+}
+
+void RouteEditor::update_traffic_vehicle(TrafficRoute& route,
+                                         TrafficVehicle& vehicle,
+                                         float elapsed_seconds) {
+  if (!vehicle.running || vehicle.path_index >= route.path.size() ||
+      elapsed_seconds <= 0.0f) return;
+  const auto& target = route.path[vehicle.path_index];
+  const float dx = target.x - vehicle.current.x;
+  const float dz = target.z - vehicle.current.z;
   const float distance = std::hypot(dx, dz);
-  size_t lookahead_index = route.path_index;
+  size_t lookahead_index = vehicle.path_index;
   float lookahead_distance = 0.0f;
   size_t lookahead_guard = 0;
   while (lookahead_distance < body_lookahead_m_ &&
@@ -1174,84 +1355,87 @@ void RouteEditor::update_traffic_route(TrafficRoute& route, float elapsed_second
   }
   const auto& body_target = route.path[lookahead_index];
   const float desired_heading = normalize_heading(
-      std::atan2(body_target.x - route.current.x,
-                 -(body_target.z - route.current.z)) * 180.0f / pi);
-  float delta = heading_delta(route.current.heading, desired_heading);
+      std::atan2(body_target.x - vehicle.current.x,
+                 -(body_target.z - vehicle.current.z)) * 180.0f / pi);
+  float delta = heading_delta(vehicle.current.heading, desired_heading);
   if (std::abs(delta) < 0.25f) delta = 0.0f;
   const float heading_blend = 1.0f - std::exp(-body_heading_response_ * elapsed_seconds);
-  route.current.heading = normalize_heading(
-      route.current.heading + std::clamp(delta * heading_blend,
-                                         -35.0f * elapsed_seconds,
-                                         35.0f * elapsed_seconds));
+  vehicle.current.heading = normalize_heading(
+      vehicle.current.heading + std::clamp(delta * heading_blend,
+                                           -35.0f * elapsed_seconds,
+                                           35.0f * elapsed_seconds));
   const float route_curve = heading_delta(target.heading, body_target.heading);
   const float preview_distance = std::max(
-      turn_preview_min_m_, route.current_speed_mps * turn_preview_seconds_);
+      turn_preview_min_m_, vehicle.current_speed_mps * turn_preview_seconds_);
   const float upcoming_turn = upcoming_turn_degrees(
-      route.path, route.path_index, route.loop, preview_distance);
+      route.path, vehicle.path_index, route.loop, preview_distance);
   const float severity = std::clamp(
       upcoming_turn / corner_full_slowdown_deg_, 0.0f, 1.0f);
   const float minimum_factor = std::clamp(
       corner_min_speed_mps_ / std::max(route.cruise_speed_mps, 0.5f), 0.0f, 1.0f);
   const float corner_factor = 1.0f - severity * (1.0f - minimum_factor);
   float target_speed = route.cruise_speed_mps * corner_factor;
-  if (!route.loop && route.path_index < route.distance_remaining.size()) {
-    const float remaining = distance + route.distance_remaining[route.path_index];
+  if (!route.loop && vehicle.path_index < route.distance_remaining.size()) {
+    const float remaining = distance + route.distance_remaining[vehicle.path_index];
     target_speed = std::min(target_speed, std::sqrt(2.0f * braking_mps2_ * remaining));
   }
-  const float collision_limit = traffic_speed_limit(route);
+  const float collision_limit = traffic_speed_limit(route, vehicle);
   target_speed = std::min(target_speed, collision_limit);
-  route.traffic_blocked = collision_enabled_ && collision_limit < 0.15f;
-  route.current_speed_mps += std::clamp(
-      target_speed - route.current_speed_mps,
+  vehicle.traffic_blocked = collision_enabled_ && collision_limit < 0.15f;
+  vehicle.current_speed_mps += std::clamp(
+      target_speed - vehicle.current_speed_mps,
       -braking_mps2_ * elapsed_seconds,
       acceleration_mps2_ * elapsed_seconds);
-  float travel = std::max(0.0f, route.current_speed_mps * elapsed_seconds);
+  float travel = std::max(0.0f, vehicle.current_speed_mps * elapsed_seconds);
   float travelled = 0.0f;
-  while (route.running) {
-    if (route.path_index >= route.path.size()) {
+  while (vehicle.running) {
+    if (vehicle.path_index >= route.path.size()) {
       if (route.loop) {
-        route.current = route.path.front();
-        route.path_index = 1;
+        vehicle.current = route.path.front();
+        vehicle.path_index = 1;
       } else {
-        route.running = false;
-        route.current_speed_mps = 0.0f;
-        route.steering = 0.0f;
-        route.traffic_blocked = false;
-        status_ = "Route complete: " + route.label;
-        show_instance(route.instance, route.current, route.spin, 0.0f);
+        vehicle.running = false;
+        vehicle.current_speed_mps = 0.0f;
+        vehicle.steering = 0.0f;
+        vehicle.traffic_blocked = false;
+        // A completed one-way vehicle leaves the traffic system. Keeping it
+        // parked at the last point would block every following bus forever.
+        if (vehicle.instance) XPLMDestroyInstance(vehicle.instance);
+        vehicle.instance = nullptr;
+        vehicle.active = false;
         return;
       }
     }
-    const auto& movement_target = route.path[route.path_index];
-    const float move_x = movement_target.x - route.current.x;
-    const float move_z = movement_target.z - route.current.z;
+    const auto& movement_target = route.path[vehicle.path_index];
+    const float move_x = movement_target.x - vehicle.current.x;
+    const float move_z = movement_target.z - vehicle.current.z;
     const float move_distance = std::hypot(move_x, move_z);
     if (move_distance <= 0.0001f) {
-      route.current.x = movement_target.x;
-      route.current.y = movement_target.y;
-      route.current.z = movement_target.z;
-      ++route.path_index;
+      vehicle.current.x = movement_target.x;
+      vehicle.current.y = movement_target.y;
+      vehicle.current.z = movement_target.z;
+      ++vehicle.path_index;
       continue;
     }
     if (travel <= 0.00001f) break;
     if (travel >= move_distance) {
-      route.current.x = movement_target.x;
-      route.current.y = movement_target.y;
-      route.current.z = movement_target.z;
+      vehicle.current.x = movement_target.x;
+      vehicle.current.y = movement_target.y;
+      vehicle.current.z = movement_target.z;
       travel -= move_distance;
       travelled += move_distance;
-      ++route.path_index;
+      ++vehicle.path_index;
     } else {
       const float ratio = travel / move_distance;
-      route.current.x += move_x * ratio;
-      route.current.z += move_z * ratio;
-      route.current.y += (movement_target.y - route.current.y) * ratio;
+      vehicle.current.x += move_x * ratio;
+      vehicle.current.z += move_z * ratio;
+      vehicle.current.y += (movement_target.y - vehicle.current.y) * ratio;
       travelled += travel;
       travel = 0.0f;
     }
   }
-  route.spin += travelled / 3.0f;
-  route.spin -= std::floor(route.spin);
+  vehicle.spin += travelled / 3.0f;
+  vehicle.spin -= std::floor(vehicle.spin);
   const float curvature = (route_curve * pi / 180.0f) /
                           std::max(lookahead_distance, 0.5f);
   const float steering_angle = std::atan(wheelbase_m_ * curvature) * 180.0f / pi;
@@ -1259,8 +1443,8 @@ void RouteEditor::update_traffic_route(TrafficRoute& route, float elapsed_second
       std::clamp(steering_angle / max_steering_deg_, -1.0f, 1.0f);
   if (std::abs(route_curve) < 0.8f) target_steering = 0.0f;
   const float steering_blend = 1.0f - std::exp(-6.0f * elapsed_seconds);
-  route.steering += (target_steering - route.steering) * steering_blend;
-  show_instance(route.instance, route.current, route.spin, route.steering);
+  vehicle.steering += (target_steering - vehicle.steering) * steering_blend;
+  show_instance(vehicle.instance, vehicle.current, vehicle.spin, vehicle.steering);
 }
 
 void RouteEditor::update(float elapsed_seconds) {
@@ -1409,11 +1593,14 @@ bool RouteEditor::save() {
   try {
     auto serialize_route = [&](const std::string& id, const std::string& label,
                                const std::string& route_model, bool loop,
-                               bool autostart, float route_speed,
+                               bool autostart, float route_speed, int bus_count,
+                               float spawn_interval_s,
                                const std::vector<RoutePoint>& anchors) {
       json item = {{"id", id}, {"label", label}, {"model", route_model},
                    {"path_type", "bezier"}, {"loop", loop},
-                   {"autostart", autostart}, {"speed_mps", route_speed}};
+                   {"autostart", autostart}, {"speed_mps", route_speed},
+                   {"bus_count", std::clamp(bus_count, 1, 5)},
+                   {"spawn_interval_s", std::clamp(spawn_interval_s, 5.0f, 300.0f)}};
       item["waypoints"] = json::array();
       for (const auto& point : anchors) {
         double latitude{}, longitude{}, altitude{};
@@ -1438,20 +1625,22 @@ bool RouteEditor::save() {
       return item;
     };
     json route;
-    route["schema"] = 3;
+    route["schema"] = 4;
     route["routes"] = json::array();
     for (const auto& existing : traffic_routes_) {
       if (existing.id == editing_route_id_) continue;
       route["routes"].push_back(serialize_route(
           existing.id, existing.label, existing.model, existing.loop,
           existing.autostart,
-          existing.speed_mps, existing.anchors));
+          existing.speed_mps, existing.bus_count, existing.spawn_interval_s,
+          existing.anchors));
     }
     route["routes"].push_back(serialize_route(
         editing_route_id_.empty() ? "bus_route_01" : editing_route_id_,
         editing_route_label_.empty() ? "Apron Bus Route 1" : editing_route_label_,
         model_id_, loop_enabled_, editing_route_autostart_,
-        editing_route_speed_mps_, points_));
+        editing_route_speed_mps_, editing_bus_count_, editing_spawn_interval_s_,
+        points_));
     std::ofstream output(route_path_);
     output << route.dump(2) << '\n';
     if (!output) throw std::runtime_error("Cannot write route file");
@@ -1479,6 +1668,8 @@ bool RouteEditor::save() {
     editing_route_autostart_ = true;
     editing_route_was_running_ = false;
     editing_route_speed_mps_ = speed_mps_;
+    editing_bus_count_ = 1;
+    editing_spawn_interval_s_ = 45.0f;
     editing_route_id_.clear();
     editing_route_label_.clear();
     state_ = RouteEditorState::Idle;
@@ -1506,6 +1697,8 @@ void RouteEditor::cancel() {
   editing_route_autostart_ = true;
   editing_route_was_running_ = false;
   editing_route_speed_mps_ = speed_mps_;
+  editing_bus_count_ = 1;
+  editing_spawn_interval_s_ = 45.0f;
   editing_route_id_.clear();
   editing_route_label_.clear();
   handle_drag_anchor_ = -1;
