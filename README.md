@@ -1,7 +1,7 @@
 # SSA — Scenery Service Animation
 
 **Developer:** BoldStudio31  
-**Status:** 3D object-placement gizmo beta 0.20.0  
+**Status:** object-anchored 3D placement gizmo beta 0.20.1  
 **Targets:** X-Plane 11.50+ and X-Plane 12; Windows, Linux and macOS
 
 SSA is a standalone animation controller for scenery objects. It provides custom
@@ -13,7 +13,11 @@ developers. Open it in a browser, choose a scenery folder and OBJ, and copy the
 sanitized `boldstudio31/ssa/animation/scenery/object` dataref into both Blender
 and `ssa.json`.
 
-## Implemented through 0.20.0
+## Implemented through 0.20.1
+
+- The placement gizmo is projected from the preview object's 3D position and
+  follows it while the X-Plane camera moves.
+- Corrected inverted X/Z translation and heading drag directions.
 
 - Perspective 3D placement remains in the normal X-Plane camera.
 - Blender-style screen gizmo provides drag handles for X, Y (altitude), Z,

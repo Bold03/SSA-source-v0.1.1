@@ -13,6 +13,17 @@ using json = nlohmann::json;
 namespace ssa {
 namespace {
 constexpr float pi = 3.14159265358979323846f;
+void multiply_matrix_vector(float destination[4], const float matrix[16],
+                            const float vector[4]) {
+  destination[0] = vector[0] * matrix[0] + vector[1] * matrix[4] +
+                   vector[2] * matrix[8] + vector[3] * matrix[12];
+  destination[1] = vector[0] * matrix[1] + vector[1] * matrix[5] +
+                   vector[2] * matrix[9] + vector[3] * matrix[13];
+  destination[2] = vector[0] * matrix[2] + vector[1] * matrix[6] +
+                   vector[2] * matrix[10] + vector[3] * matrix[14];
+  destination[3] = vector[0] * matrix[3] + vector[1] * matrix[7] +
+                   vector[2] * matrix[11] + vector[3] * matrix[15];
+}
 // XPLMCreateInstance in the X-Plane SDK takes const char** (the pointer array
 // itself is mutable), so this must not be a constexpr/const pointer array.
 const char* instance_datarefs[] = {
@@ -40,6 +51,8 @@ void VdgsEditor::unload() {
   preview_instance_ = nullptr;
   preview_object_ = nullptr;
   probe_ = nullptr;
+  world_matrix_ref_ = nullptr;
+  projection_matrix_ref_ = nullptr;
   for (auto& placement : placements_) {
     if (placement.instance) XPLMDestroyInstance(placement.instance);
     if (placement.object) XPLMUnloadObject(placement.object);
@@ -96,6 +109,9 @@ bool VdgsEditor::load(const std::string& xplane_root) {
     }
     preview_object_ = XPLMLoadObject(absolute_object_path_.c_str());
     probe_ = XPLMCreateProbe(xplm_ProbeY);
+    world_matrix_ref_ = XPLMFindDataRef("sim/graphics/view/world_matrix");
+    projection_matrix_ref_ =
+        XPLMFindDataRef("sim/graphics/view/projection_matrix_3d");
     if (!preview_object_ || !probe_) {
       status_ = "Cannot load VDGS OBJ";
       unload();
@@ -234,6 +250,13 @@ void VdgsEditor::draw_gizmo_callback(XPLMWindowID, void* refcon) {
 
 void VdgsEditor::draw_gizmo() {
   if (state_ != VdgsEditorState::Placing || !gizmo_window_) return;
+  int projected_x{}, projected_y{};
+  if (project_object_to_screen(projected_x, projected_y)) {
+    constexpr int half = 130;
+    XPLMSetWindowGeometry(gizmo_window_, projected_x - half,
+                          projected_y + half, projected_x + half,
+                          projected_y - half);
+  }
   int left{}, top{}, right{}, bottom{};
   XPLMGetWindowGeometry(gizmo_window_, &left, &top, &right, &bottom);
   const int cx = (left + right) / 2;
@@ -260,6 +283,32 @@ void VdgsEditor::draw_gizmo() {
                  xplmFont_Proportional);
   XPLMDrawString(white, left + 25, bottom + 12, help, nullptr,
                  xplmFont_Proportional);
+}
+
+bool VdgsEditor::project_object_to_screen(int& screen_x, int& screen_y) const {
+  if (!world_matrix_ref_ || !projection_matrix_ref_) return false;
+  float world_matrix[16]{};
+  float projection_matrix[16]{};
+  if (XPLMGetDatavf(world_matrix_ref_, world_matrix, 0, 16) != 16 ||
+      XPLMGetDatavf(projection_matrix_ref_, projection_matrix, 0, 16) != 16)
+    return false;
+  const float world_position[4] = {x_, y_ + 2.0f, z_, 1.0f};
+  float eye_position[4]{};
+  float clip_position[4]{};
+  multiply_matrix_vector(eye_position, world_matrix, world_position);
+  multiply_matrix_vector(clip_position, projection_matrix, eye_position);
+  if (clip_position[3] <= 0.001f) return false;
+  const float ndc_x = clip_position[0] / clip_position[3];
+  const float ndc_y = clip_position[1] / clip_position[3];
+  const float ndc_z = clip_position[2] / clip_position[3];
+  if (ndc_x < -1.15f || ndc_x > 1.15f || ndc_y < -1.15f ||
+      ndc_y > 1.15f || ndc_z < -1.0f || ndc_z > 1.0f)
+    return false;
+  int left{}, top{}, right{}, bottom{};
+  XPLMGetScreenBoundsGlobal(&left, &top, &right, &bottom);
+  screen_x = left + static_cast<int>((ndc_x * 0.5f + 0.5f) * (right - left));
+  screen_y = bottom + static_cast<int>((ndc_y * 0.5f + 0.5f) * (top - bottom));
+  return true;
 }
 
 int VdgsEditor::gizmo_mouse_callback(XPLMWindowID, int x, int y,
@@ -298,10 +347,10 @@ int VdgsEditor::gizmo_mouse(int x, int y, XPLMMouseStatus status) {
   const float dy = static_cast<float>(y - drag_last_y_);
   drag_last_x_ = x;
   drag_last_y_ = y;
-  if (gizmo_drag_ == GizmoDrag::MoveX) move_side(dx * 0.05f);
+  if (gizmo_drag_ == GizmoDrag::MoveX) move_side(-dx * 0.05f);
   else if (gizmo_drag_ == GizmoDrag::MoveY) adjust_altitude(dy * 0.02f);
-  else if (gizmo_drag_ == GizmoDrag::MoveZ) move_forward(dy * 0.05f);
-  else if (gizmo_drag_ == GizmoDrag::Rotate) turn(dx * 0.5f);
+  else if (gizmo_drag_ == GizmoDrag::MoveZ) move_forward(-dy * 0.05f);
+  else if (gizmo_drag_ == GizmoDrag::Rotate) turn(-dx * 0.5f);
   return 1;
 }
 

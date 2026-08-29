@@ -3,6 +3,7 @@
 #include <XPLMInstance.h>
 #include <XPLMScenery.h>
 #include <XPLMDisplay.h>
+#include <XPLMDataAccess.h>
 #include <array>
 #include <string>
 #include <vector>
@@ -58,6 +59,7 @@ private:
   void close_gizmo();
   void draw_gizmo();
   int gizmo_mouse(int x, int y, XPLMMouseStatus status);
+  bool project_object_to_screen(int& screen_x, int& screen_y) const;
   static float normalize_heading(float heading);
   float terrain_y(float x, float z, float fallback) const;
   void show_preview();
@@ -83,6 +85,8 @@ private:
   XPLMObjectRef preview_object_{};
   XPLMInstanceRef preview_instance_{};
   XPLMProbeRef probe_{};
+  XPLMDataRef world_matrix_ref_{};
+  XPLMDataRef projection_matrix_ref_{};
   XPLMWindowID gizmo_window_{};
   GizmoDrag gizmo_drag_{GizmoDrag::None};
   int drag_last_x_{};
