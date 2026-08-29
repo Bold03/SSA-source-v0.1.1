@@ -199,8 +199,10 @@ void Tablet::draw_impl() {
         label(l + 22, vdgs_y, line, display->vdgs_state == VdgsState::Stop ? 1.0f : 0.90f,
               display->vdgs_state == VdgsState::Stop ? 0.30f : 0.95f,
               display->vdgs_state == VdgsState::Stop ? 0.20f : 1.0f);
-        std::snprintf(line, sizeof(line), "Distance: %+.1f m   Lateral: %+.2f m",
-                      display->vdgs_distance_error_m, display->vdgs_lateral_error_m);
+        std::snprintf(line, sizeof(line),
+                      "Distance: %+.1f m   Lateral: %+.2f m   Stop: %.1f m",
+                      display->vdgs_distance_error_m, display->vdgs_lateral_error_m,
+                      display->vdgs_effective_stop_m);
         label(l + 38, vdgs_y - 20, line, 0.55f, 0.85f, 0.75f);
       } else {
         std::snprintf(line, sizeof(line), "%zu. %s  |  IDLE", i + 1,

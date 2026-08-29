@@ -33,7 +33,8 @@ ssa::FloatDataRef* vdgs_slow_ref{};
 ssa::FloatDataRef* vdgs_stop_ref{};
 ssa::FloatDataRef* vdgs_lateral_ref{};
 ssa::FloatDataRef* vdgs_distance_ref{};
-XPLMDataRef lat_ref{}, lon_ref{}, heading_ref{}, icao_ref{}, door_open_ref{}, prop_ref{}, onground_ref{}, groundspeed_ref{};
+XPLMDataRef lat_ref{}, lon_ref{}, heading_ref{}, icao_ref{}, door_open_ref{}, prop_ref{},
+    onground_ref{}, groundspeed_ref{}, aircraft_length_ref{};
 XPLMCommandRef tablet_command{};
 XPLMCommandRef reload_command{};
 XPLMCommandRef hangar_toggle_command{};
@@ -94,9 +95,21 @@ void update_vdgs(double aircraft_lat, double aircraft_lon) {
   const double north = -(aircraft_z - display_z);
   const float lateral = static_cast<float>(east * std::cos(angle) - north * std::sin(angle));
   const float forward = static_cast<float>(east * std::sin(angle) + north * std::cos(angle));
-  const float distance_error = forward - display->vdgs.stop_distance_m;
+  float effective_stop_m = display->vdgs.stop_distance_m;
+  if (display->vdgs.use_aircraft_length && aircraft_length_ref) {
+    const float aircraft_length_m = XPLMGetDataf(aircraft_length_ref);
+    // X-Plane publishes the aircraft length in metres. Half its length is a
+    // robust initial nose offset for arbitrary aircraft; the configurable
+    // clearance keeps the nose/cockpit safely in front of the VDGS panel.
+    if (aircraft_length_m >= 8.0f && aircraft_length_m <= 100.0f)
+      effective_stop_m = std::max(effective_stop_m,
+                                  aircraft_length_m * 0.5f +
+                                      display->vdgs.nose_clearance_m);
+  }
+  const float distance_error = forward - effective_stop_m;
   display->vdgs_lateral_error_m = lateral;
   display->vdgs_distance_error_m = distance_error;
+  display->vdgs_effective_stop_m = effective_stop_m;
 
   const bool in_front = forward > 0.0f;
   const bool in_range = forward <= display->vdgs.acquisition_distance_m &&
@@ -105,7 +118,7 @@ void update_vdgs(double aircraft_lat, double aircraft_lon) {
 
   display->vdgs_selected = true;
   const float distance_span = std::max(1.0f, display->vdgs.acquisition_distance_m -
-                                               display->vdgs.stop_distance_m);
+                                               effective_stop_m);
   const float distance_ratio = std::clamp(std::max(0.0f, distance_error) / distance_span,
                                           0.0f, 1.0f);
   const float lateral_ratio = std::clamp(
@@ -648,6 +661,7 @@ PLUGIN_API int XPluginStart(char* name, char* signature, char* description) {
     prop_ref = XPLMFindDataRef("sim/aircraft/prop/acf_en_type");
     onground_ref = XPLMFindDataRef("sim/flightmodel/failures/onground_any");
     groundspeed_ref = XPLMFindDataRef("sim/flightmodel/position/groundspeed");
+    aircraft_length_ref = XPLMFindDataRef("sim/aircraft/view/acf_length");
 
     tablet_command = XPLMCreateCommand("boldstudio31/ssa/tablet/toggle", "Toggle SSA tablet");
     XPLMRegisterCommandHandler(tablet_command, command_handler, 1, nullptr);
@@ -674,7 +688,7 @@ PLUGIN_API int XPluginStart(char* name, char* signature, char* description) {
     XPLMAppendMenuItem(menu, "Toggle nearest hangar", reinterpret_cast<void*>(3), 0);
     XPLMAppendMenuItem(menu, "Toggle nearest jetway", reinterpret_cast<void*>(4), 0);
     XPLMRegisterFlightLoopCallback(flight_loop, -1.0f, nullptr);
-    log("SSA 0.18.3 started: " + std::to_string(scenery->objects().size()) +
+    log("SSA 0.18.4 started: " + std::to_string(scenery->objects().size()) +
         " object(s), L1 door dataref " + (door_open_ref ? "detected" : "not found"));
     return 1;
   } catch (const std::exception& e) {

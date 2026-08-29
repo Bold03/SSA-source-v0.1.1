@@ -52,6 +52,8 @@ struct VdgsConfig {
   bool enabled{};
   float object_heading_deg{};
   float stop_distance_m{18.0f};
+  bool use_aircraft_length{true};
+  float nose_clearance_m{2.5f};
   float acquisition_distance_m{80.0f};
   float slow_distance_m{12.0f};
   float stop_tolerance_m{0.50f};
@@ -83,6 +85,7 @@ struct ServiceObject {
   VdgsState vdgs_state{VdgsState::Idle};
   float vdgs_lateral_error_m{};
   float vdgs_distance_error_m{};
+  float vdgs_effective_stop_m{};
   bool vdgs_selected{};
   std::vector<AnimationChannel> channels;
 };

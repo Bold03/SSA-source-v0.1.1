@@ -126,6 +126,9 @@ bool SceneryManager::load_file(const std::string& path) {
         object.vdgs.enabled = true;
         object.vdgs.object_heading_deg = v.value("object_heading_deg", 0.0f);
         object.vdgs.stop_distance_m = std::clamp(v.value("stop_distance_m", 18.0f), 2.0f, 80.0f);
+        object.vdgs.use_aircraft_length = v.value("use_aircraft_length", true);
+        object.vdgs.nose_clearance_m =
+            std::clamp(v.value("nose_clearance_m", 2.5f), 0.5f, 10.0f);
         object.vdgs.acquisition_distance_m =
             std::clamp(v.value("acquisition_distance_m", 80.0f),
                        object.vdgs.stop_distance_m + 5.0f, 250.0f);

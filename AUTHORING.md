@@ -164,6 +164,8 @@ distance in front of the display.
   "vdgs": {
     "object_heading_deg": 0.0,
     "stop_distance_m": 18.0,
+    "use_aircraft_length": true,
+    "nose_clearance_m": 2.5,
     "acquisition_distance_m": 80.0,
     "slow_distance_m": 12.0,
     "stop_tolerance_m": 0.5,
@@ -179,6 +181,12 @@ This VDGS OBJ uses `distance_ratio = 1` at the upper/far position and `0` at
 the lower/stop position. If its marker or arrows appear mirrored in X-Plane,
 change only `object_heading_deg` or `lateral_multiplier`; the Blender animation
 does not need to be rebuilt.
+
+When `use_aircraft_length` is enabled, `stop_distance_m` is a minimum/fallback.
+SSA normally stops the aircraft reference point at half the loaded aircraft
+length plus `nose_clearance_m`, preventing different aircraft noses from
+reaching the panel. Increase `nose_clearance_m` if a particular model still
+stops too close.
 
 ### Place VDGS inside X-Plane
 
