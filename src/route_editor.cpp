@@ -126,6 +126,8 @@ bool RouteEditor::load(const std::string& xplane_root) {
           collision_detection_m_ - 1.0f);
       collision_lane_half_width_m_ = std::clamp(
           model.value("collision_lane_half_width_m", 3.5f), 1.0f, 10.0f);
+      collision_refresh_s_ = std::clamp(
+          model.value("collision_refresh_s", 0.10f), 0.05f, 0.50f);
       scenery_directory_ = entry.path().string();
       route_path_ = (entry.path() / "ssa_routes.json").string();
       for (const auto& configured_model : root.at("vehicle_models")) {
@@ -326,6 +328,8 @@ void RouteEditor::activate_traffic_vehicle(TrafficRoute& route,
   vehicle.current = route.path.front();
   vehicle.path_index = 1;
   vehicle.current_speed_mps = 0.0f;
+  vehicle.collision_speed_limit_mps = route.cruise_speed_mps;
+  vehicle.collision_check_clock = 0.0f;
   vehicle.spin = 0.0f;
   vehicle.steering = 0.0f;
   vehicle.traffic_blocked = false;
@@ -1211,26 +1215,28 @@ float RouteEditor::traffic_speed_limit(const TrafficRoute& route,
       if (&other == &vehicle || !other.instance || !other.active) continue;
       const float dx = other.current.x - vehicle.current.x;
       const float dz = other.current.z - vehicle.current.z;
-      const float distance = std::hypot(dx, dz);
+      const float distance_squared = dx * dx + dz * dz;
 
-    // Routes can share a spawn point. Give the first loaded bus priority so
-    // the remaining buses wait instead of spawning inside one another forever.
-      if (distance < 0.5f) {
+      // Routes can share a spawn point. Give the first loaded bus priority so
+      // the remaining buses wait instead of spawning inside one another forever.
+      if (distance_squared < 0.25f) {
         if (priority(&other, &vehicle)) speed_limit = 0.0f;
         continue;
       }
-      if (distance > collision_detection_m_) continue;
+      if (distance_squared > collision_detection_m_ * collision_detection_m_)
+        continue;
 
       const float longitudinal = dx * forward_x + dz * forward_z;
       const float lateral = std::abs(dx * forward_z - dz * forward_x);
       const float heading_difference =
           std::abs(heading_delta(vehicle.current.heading, other.current.heading));
 
-    // Hard body separation. A following bus must stop when it has already
-    // entered the protected distance, even if both buses currently have the
-    // same speed. At a crossing, stable load order provides right-of-way and
-    // prevents both vehicles from waiting forever.
-      if (distance < collision_stop_distance_m_) {
+      // Hard body separation. A following bus must stop when it has already
+      // entered the protected distance, even if both buses currently have the
+      // same speed. At a crossing, stable load order provides right-of-way and
+      // prevents both vehicles from waiting forever.
+      if (distance_squared <
+          collision_stop_distance_m_ * collision_stop_distance_m_) {
         if (heading_difference > 45.0f) {
           if (priority(&other, &vehicle)) speed_limit = 0.0f;
         } else if (longitudinal > 0.0f &&
@@ -1285,9 +1291,10 @@ void RouteEditor::stop_test() {
   }
 }
 
-void RouteEditor::update_traffic_route(TrafficRoute& route, float elapsed_seconds) {
-  if (!route.running || route.vehicles.empty() || elapsed_seconds <= 0.0f) return;
-  route.spawn_clock += elapsed_seconds;
+void RouteEditor::update_traffic_route(TrafficRoute& route, float elapsed_seconds,
+                                       float clock_elapsed_seconds) {
+  if (!route.running || route.vehicles.empty()) return;
+  route.spawn_clock += std::max(0.0f, clock_elapsed_seconds);
   route.traffic_blocked = false;
   while (route.spawned_count < route.vehicles.size()) {
     const float due = static_cast<float>(route.spawned_count) * route.spawn_interval_s;
@@ -1297,8 +1304,10 @@ void RouteEditor::update_traffic_route(TrafficRoute& route, float elapsed_second
     for (const auto& other_route : traffic_routes_) {
       for (const auto& other : other_route.vehicles) {
         if (!other.active || !other.instance) continue;
-        if (std::hypot(other.current.x - spawn.x, other.current.z - spawn.z) <
-            collision_stop_distance_m_) {
+        const float spawn_dx = other.current.x - spawn.x;
+        const float spawn_dz = other.current.z - spawn.z;
+        if (spawn_dx * spawn_dx + spawn_dz * spawn_dz <
+            collision_stop_distance_m_ * collision_stop_distance_m_) {
           spawn_clear = false;
           break;
         }
@@ -1379,7 +1388,12 @@ void RouteEditor::update_traffic_vehicle(TrafficRoute& route,
     const float remaining = distance + route.distance_remaining[vehicle.path_index];
     target_speed = std::min(target_speed, std::sqrt(2.0f * braking_mps2_ * remaining));
   }
-  const float collision_limit = traffic_speed_limit(route, vehicle);
+  vehicle.collision_check_clock -= elapsed_seconds;
+  if (vehicle.collision_check_clock <= 0.0f) {
+    vehicle.collision_speed_limit_mps = traffic_speed_limit(route, vehicle);
+    vehicle.collision_check_clock = collision_refresh_s_;
+  }
+  const float collision_limit = vehicle.collision_speed_limit_mps;
   target_speed = std::min(target_speed, collision_limit);
   vehicle.traffic_blocked = collision_enabled_ && collision_limit < 0.15f;
   vehicle.current_speed_mps += std::clamp(
@@ -1462,8 +1476,10 @@ void RouteEditor::update(float elapsed_seconds) {
     }
   }
   const float traffic_elapsed = std::clamp(elapsed_seconds, 0.0f, 0.10f);
+  const float traffic_clock_elapsed = std::clamp(elapsed_seconds, 0.0f, 1.0f);
   for (auto& route : traffic_routes_)
-    if (route.running) update_traffic_route(route, traffic_elapsed);
+    if (route.running)
+      update_traffic_route(route, traffic_elapsed, traffic_clock_elapsed);
   if (state_ != RouteEditorState::Testing || test_index_ >= test_points_.size()) return;
   elapsed_seconds = std::clamp(elapsed_seconds, 0.0f, 0.10f);
   if (elapsed_seconds <= 0.0f) return;

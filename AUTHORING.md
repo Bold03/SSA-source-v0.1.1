@@ -27,7 +27,9 @@ Add a vehicle model entry at the top level of `ssa.json`:
     "corner_min_speed_mps": 2.2,
     "corner_full_slowdown_deg": 35.0,
     "acceleration_mps2": 1.5,
-    "braking_mps2": 2.5
+    "braking_mps2": 2.5,
+    "collision_enabled": true,
+    "collision_refresh_s": 0.10
   }
 ]
 ```
@@ -107,6 +109,11 @@ With the defaults, SSA looks at least 15 m ahead, begins braking before a bend,
 and reaches about 2.2 m/s for turns of 35 degrees or sharper. It accelerates
 again only after the upcoming path straightens, reducing body and rear-axle
 drift at waypoint transitions.
+
+`collision_refresh_s` controls how often each active bus rescans nearby SSA
+traffic. The recommended `0.10` seconds keeps collision response fast while
+avoiding a full all-bus scan on every rendered frame. Visible vehicle movement,
+wheel spin and steering still update every frame.
 
 ## Folder layout
 

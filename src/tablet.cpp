@@ -1,6 +1,7 @@
 #include "ssa/tablet.hpp"
 #include <XPLMGraphics.h>
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 
 namespace ssa {
@@ -167,6 +168,29 @@ void Tablet::draw_impl() {
                       route->bus_count, route->loop ? "LOOP" : "ONE WAY",
                       route->cruise_speed_mps * 3.6f);
         label(l + 22, route_y, route_line);
+        size_t active_count = 0;
+        for (const auto& vehicle : route->vehicles)
+          if (vehicle.active && vehicle.instance) ++active_count;
+        char traffic_detail[120];
+        if (route->running && route->spawned_count < route->vehicles.size()) {
+          const float due = static_cast<float>(route->spawned_count) *
+                            route->spawn_interval_s;
+          const float remaining = std::max(0.0f, due - route->spawn_clock);
+          if (remaining <= 0.0f) {
+            std::snprintf(traffic_detail, sizeof(traffic_detail),
+                          "ACTIVE %zu/%d | SPAWN WAIT",
+                          active_count, route->bus_count);
+          } else {
+            std::snprintf(traffic_detail, sizeof(traffic_detail),
+                          "ACTIVE %zu/%d | NEXT: %.0f SEC",
+                          active_count, route->bus_count, std::ceil(remaining));
+          }
+        } else {
+          std::snprintf(traffic_detail, sizeof(traffic_detail),
+                        "ACTIVE %zu/%d | %s", active_count, route->bus_count,
+                        route->running ? "ALL BUSES SPAWNED" : "TRAFFIC STOPPED");
+        }
+        label(l + 38, route_y - 18, traffic_detail, 0.55f, 0.85f, 0.75f);
         button(r - 206, route_y + 12, r - 150, route_y - 16, "EDIT",
                0.30f, 0.80f, 1.0f);
         button(r - 142, route_y + 12, r - 86, route_y - 16, "START");

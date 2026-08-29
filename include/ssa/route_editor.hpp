@@ -30,6 +30,8 @@ struct TrafficVehicle {
   bool running{};
   bool traffic_blocked{};
   float current_speed_mps{};
+  float collision_speed_limit_mps{1000.0f};
+  float collision_check_clock{};
   float spin{};
   float steering{};
   size_t path_index{1};
@@ -108,7 +110,8 @@ private:
   void build_bezier_path(const std::vector<RoutePoint>& anchors, bool loop,
                          std::vector<RoutePoint>& path,
                          std::vector<float>& distance_remaining);
-  void update_traffic_route(TrafficRoute& route, float elapsed_seconds);
+  void update_traffic_route(TrafficRoute& route, float elapsed_seconds,
+                            float clock_elapsed_seconds);
   void update_traffic_vehicle(TrafficRoute& route, TrafficVehicle& vehicle,
                               float elapsed_seconds);
   float traffic_speed_limit(const TrafficRoute& route,
@@ -173,6 +176,7 @@ private:
   float collision_detection_m_{40.0f};
   float collision_stop_distance_m_{13.0f};
   float collision_lane_half_width_m_{3.5f};
+  float collision_refresh_s_{0.10f};
   float spin_{};
   float current_speed_mps_{};
   float display_steering_{};

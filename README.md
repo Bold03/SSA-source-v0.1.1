@@ -1,7 +1,7 @@
 # SSA — Scenery Service Animation
 
 **Developer:** BoldStudio31  
-**Status:** multi-bus Traffic Manager beta 0.17.0  
+**Status:** optimized multi-bus Traffic Manager beta 0.17.1  
 **Targets:** X-Plane 11.50+ and X-Plane 12; Windows, Linux and macOS
 
 SSA is a standalone animation controller for scenery objects. It provides custom
@@ -13,7 +13,7 @@ developers. Open it in a browser, choose a scenery folder and OBJ, and copy the
 sanitized `boldstudio31/ssa/animation/scenery/object` dataref into both Blender
 and `ssa.json`.
 
-## Implemented through 0.17.0
+## Implemented through 0.17.1
 
 - Dynamic custom datarefs loaded from each scenery package's `ssa.json`.
 - Smooth open/close animation with configurable speed.
@@ -142,6 +142,15 @@ and `ssa.json`.
 - The TRAFFIC tab shows the configured bus quantity (`xN`) beside each route.
   Collision avoidance compares every active vehicle instance, including buses
   sharing the same route.
+- Each route now reports its live active-bus count and either the countdown to
+  the next spawn, `ALL BUSES SPAWNED`, or a clear-spawn waiting message.
+- Collision scans are cached for a configurable short interval (0.10 seconds
+  by default), while position, heading, wheel spin and steering remain updated
+  every simulator frame. This reduces CPU work when many buses are active
+  without making their visible motion less smooth.
+- Collision distance filtering uses squared distances before expensive safety
+  calculations. Spawn timing uses a separate capped clock so low frame rates do
+  not make a 45-second interval take substantially longer than intended.
 - Nearby hangar list (2 km) and small jetway activation radius (35 m).
 - Per-channel automatic jetway targets calculated from aircraft position,
   heading, door profile and scenery-configured movement limits.
