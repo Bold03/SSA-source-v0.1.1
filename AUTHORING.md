@@ -296,6 +296,90 @@ wheel-rotation datarefs.
   the parking stand's available jetways.
 - Default activation radius: 35 m.
 
+## 3D announcements
+
+Place announcement audio in the scenery package as a mono PCM 16-bit WAV file.
+Stereo files are rejected because a spatial source must have one position.
+
+```json
+"announcements": [
+  {
+    "id": "terminal_pa_01",
+    "label": "Terminal Public Address 01",
+    "audio": "audio/terminal_pa_01.wav",
+    "latitude": -0.1479,
+    "longitude": 109.4044,
+    "altitude_m": 4.0,
+    "gain": 0.8,
+    "radius_m": 150.0,
+    "autoplay": true,
+    "loop": false,
+    "start_delay_s": 5.0,
+    "repeat_interval_s": 90.0
+  }
+]
+```
+
+### Modular flight Announcement Composer
+
+SSA can assemble one announcement from small reusable WAV clips. Clips are
+joined in this order: airline introduction, each flight-number digit, optional
+origin, optional destination, event phrase, and each optional gate digit.
+
+Add a reusable library and flight job to the scenery's `ssa.json`:
+
+```json
+"announcement_library": {
+  "base_folder": "audio/announcements",
+  "gap_ms": 100,
+  "airlines": { "lion_air": "airlines/lion_air_jt.wav" },
+  "digits": {
+    "0": "digits/nol.wav", "1": "digits/satu.wav",
+    "2": "digits/dua.wav", "3": "digits/tiga.wav",
+    "4": "digits/empat.wav", "5": "digits/lima.wav",
+    "6": "digits/enam.wav", "7": "digits/tujuh.wav",
+    "8": "digits/delapan.wav", "9": "digits/sembilan.wav"
+  },
+  "origins": { "jakarta": "origins/dari_jakarta.wav" },
+  "destinations": { "makassar": "destinations/tujuan_makassar.wav" },
+  "events": {
+    "landed": "events/telah_mendarat.wav",
+    "boarding": "events/dipersilakan_naik_melalui_pintu.wav"
+  }
+},
+"flight_announcements": [
+  {
+    "id": "lion_jt684_boarding",
+    "airline": "lion_air",
+    "flight_number": "684",
+    "destination": "makassar",
+    "event": "boarding",
+    "gate": "2",
+    "latitude": -6.2662,
+    "longitude": 106.8906,
+    "altitude_m": 4.0,
+    "radius_m": 150.0,
+    "repeat_interval_s": 120.0
+  }
+]
+```
+
+`flight_number` and `gate` must be strings so leading zeroes are preserved.
+Every referenced clip must be mono PCM 16-bit WAV. Clips may use different
+sample rates; SSA resamples them to the first clip's rate. `gap_ms` controls
+the silence between clips and may be overridden for one flight job.
+
+For an arrival from Jakarta, omit `destination` and `gate`, then set
+`"origin": "jakarta"` and `"event": "landed"`. A missing key or audio
+file rejects only that composed job; legacy full-file announcements still load.
+
+- `radius_m`: maximum audible distance from the active camera.
+- `gain`: source volume from 0.0 to 2.0; begin testing at 0.8.
+- `start_delay_s`: delay after entering the radius before the first playback.
+- `repeat_interval_s`: silence after a WAV finishes before it plays again.
+- `loop`: continuous playback; use it for ambience, not ordinary PA messages.
+- Multiple speaker points may use the same WAV file.
+
 Version 0.7.3 includes an initial default-B738 profile and several common
 narrow-body profiles. Aircraft without a profile use a conservative fallback;
 their door position may require later calibration.

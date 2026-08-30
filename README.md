@@ -1,7 +1,7 @@
 # SSA — Scenery Service Animation
 
 **Developer:** BoldStudio31  
-**Status:** vehicle terminology and 3D placement beta 0.20.3  
+**Status:** modular 3D airport announcements beta 0.22.0  
 **Targets:** X-Plane 11.50+ and X-Plane 12; Windows, Linux and macOS
 
 SSA is a standalone animation controller for scenery objects. It provides custom
@@ -13,7 +13,21 @@ developers. Open it in a browser, choose a scenery folder and OBJ, and copy the
 sanitized `boldstudio31/ssa/animation/scenery/object` dataref into both Blender
 and `ssa.json`.
 
-## Implemented through 0.20.3
+## Implemented through 0.22.0
+
+- The Announcement Composer joins reusable airline, digit, origin,
+  destination, event and gate WAV clips into a complete 3D flight
+  announcement.
+- Composed clips may use different sample rates. SSA resamples them, inserts a
+  configurable silence gap and builds one OpenAL buffer at scenery load time.
+- Legacy complete-file announcements remain compatible.
+
+- X-Plane 11-compatible spatial announcements use a bundled OpenAL Soft audio
+  engine instead of relying on the X-Plane 12-only XPLMSound API.
+- Mono PCM 16-bit WAV files can be attached to latitude, longitude and altitude
+  coordinates, with distance attenuation, gain, radius, start delay, looping,
+  and repeat interval settings.
+- Announcement panning follows the active X-Plane camera heading and pitch.
 
 - The former `BUS` tablet tab is now `VEHICLES` because background traffic can
   include apron buses, fuel trucks, service cars and other airport vehicles.
@@ -229,7 +243,6 @@ and `ssa.json`.
 - Expanded, aircraft-specific door profile database and per-aircraft overrides.
 - Wide-body multi-jetway assignment and collision/occupancy checks.
 - SimBrief Pilot ID login, OFP state machine and departure/arrival triggers.
-- Cross-platform positional announcement audio with distance attenuation.
 - Vehicle paths/wheel rotation, ground-staff sequences, parking display text
   and a polished textured tablet UI.
 - Deeper RealOps integration if its developers publish a supported inter-plugin API.

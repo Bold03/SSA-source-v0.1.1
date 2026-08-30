@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(SSA VERSION 0.20.3 LANGUAGES CXX)
+project(SSA VERSION 0.22.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -13,6 +13,18 @@ include(FetchContent)
 FetchContent_Declare(json URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz)
 FetchContent_MakeAvailable(json)
 
+set(LIBTYPE STATIC CACHE STRING "" FORCE)
+set(ALSOFT_UTILS OFF CACHE BOOL "" FORCE)
+set(ALSOFT_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(ALSOFT_TESTS OFF CACHE BOOL "" FORCE)
+set(ALSOFT_INSTALL OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(openal_soft
+  GIT_REPOSITORY https://github.com/kcat/openal-soft.git
+  GIT_TAG 1.24.3
+  GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(openal_soft)
+
 add_library(SSA SHARED
   src/plugin.cpp
   src/datarefs.cpp
@@ -20,6 +32,7 @@ add_library(SSA SHARED
   src/tablet.cpp
   src/route_editor.cpp
   src/vdgs_editor.cpp
+  src/announcement.cpp
 )
 
 target_include_directories(SSA PRIVATE
@@ -27,7 +40,7 @@ target_include_directories(SSA PRIVATE
   "${XPLANE_SDK_ROOT}/CHeaders/XPLM"
   "${XPLANE_SDK_ROOT}/CHeaders/Widgets"
 )
-target_link_libraries(SSA PRIVATE nlohmann_json::nlohmann_json)
+target_link_libraries(SSA PRIVATE nlohmann_json::nlohmann_json OpenAL::OpenAL)
 target_compile_definitions(SSA PRIVATE XPLM303 XPLM301 XPLM300 XPLM210 XPLM200)
 set_target_properties(SSA PROPERTIES PREFIX "" SUFFIX ".xpl")
 
