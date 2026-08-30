@@ -1,7 +1,7 @@
 # SSA — Scenery Service Animation
 
 **Developer:** BoldStudio31  
-**Status:** modular 3D airport announcements beta 0.22.2  
+**Status:** modular 3D airport announcements beta 0.23.0  
 **Targets:** X-Plane 11.50+ and X-Plane 12; Windows, Linux and macOS
 
 SSA is a standalone animation controller for scenery objects. It provides custom
@@ -13,7 +13,7 @@ developers. Open it in a browser, choose a scenery folder and OBJ, and copy the
 sanitized `boldstudio31/ssa/animation/scenery/object` dataref into both Blender
 and `ssa.json`.
 
-## Implemented through 0.22.2
+## Implemented through 0.23.0
 
 - Corrected nlohmann JSON object-key iteration for MSVC and expanded the local
   validation stub to exercise the same API used by the production dependency.
@@ -22,8 +22,13 @@ and `ssa.json`.
   number, event, origin/destination, gate, gain and audible radius without
   editing JSON manually.
 - PLACE SPEAKER opens a perspective 3D placement overlay modelled after the
-  VDGS editor. Its volume icon and X/Y/Z gizmo are authoring aids only and
-  disappear after the source position is saved to the scenery's ssa.json.
+  VDGS editor. Its high-visibility speaker marker stays attached to the audio
+  source while camera-projected Blender-style world X/Y/Z handles provide
+  direction-correct dragging. The marker disappears after saving to ssa.json.
+- The Announcement Composer reads the active X-Plane livery path only when the
+  editor opens or placement starts, then matches common airline names such as
+  Garuda, Citilink and Batik automatically. Click the airline value to rerun
+  detection, or use the arrow buttons to override it manually.
 
 - The Announcement Composer joins reusable airline, digit, origin,
   destination, event and gate WAV clips into a complete 3D flight

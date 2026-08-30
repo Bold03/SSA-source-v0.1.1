@@ -143,9 +143,15 @@ void Tablet::draw_impl() {
           0.75f, 0.85f, 0.95f);
     char value[120];
     button(l + 22, t - 145, l + 132, t - 177, "< AIRLINE");
-    std::snprintf(value, sizeof(value), "%.24s",
+    std::snprintf(value, sizeof(value),
+                  announcement_editor_.airline_auto_detected()
+                      ? "AUTO: %.18s"
+                      : "%.24s",
                   announcement_editor_.airline().c_str());
-    button(l + 142, t - 145, r - 142, t - 177, value, 0.90f, 0.95f, 1.0f);
+    button(l + 142, t - 145, r - 142, t - 177, value,
+           announcement_editor_.airline_auto_detected() ? 0.25f : 0.90f,
+           announcement_editor_.airline_auto_detected() ? 1.0f : 0.95f,
+           announcement_editor_.airline_auto_detected() ? 0.65f : 1.0f);
     button(r - 132, t - 145, r - 22, t - 177, "AIRLINE >");
 
     button(l + 22, t - 185, l + 132, t - 217, "FLIGHT -10");
@@ -188,7 +194,7 @@ void Tablet::draw_impl() {
     label(l + 22, t - 395, value, 0.55f, 0.85f, 0.75f);
     button(l + 245, t - 383, r - 22, t - 418, "PLACE SPEAKER",
            1.0f, 0.72f, 0.20f);
-    label(l + 22, b + 20, "Developer tool | Saved directly to scenery ssa.json",
+    label(l + 22, b + 20, "Click airline name to AUTO-detect active livery",
           0.55f, 0.85f, 0.75f);
     return;
   }
@@ -501,6 +507,7 @@ int Tablet::mouse_impl(int x, int y, XPLMMouseStatus status) {
     if (y <= t - 145 && y >= t - 177) {
       if (left_button) announcement_editor_.next_airline(-1);
       else if (right_button) announcement_editor_.next_airline(1);
+      else announcement_editor_.detect_airline_from_livery();
     } else if (y <= t - 185 && y >= t - 217) {
       if (left_button) announcement_editor_.adjust_flight_number(-10);
       else if (right_button) announcement_editor_.adjust_flight_number(10);

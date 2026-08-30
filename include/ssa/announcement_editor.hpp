@@ -33,6 +33,7 @@ public:
   void adjust_gate(int amount);
   void adjust_gain(float amount);
   void adjust_radius(float amount);
+  bool detect_airline_from_livery();
 
   AnnouncementEditorState state() const { return state_; }
   const std::string& status() const { return status_; }
@@ -40,6 +41,8 @@ public:
   const std::string& origin() const;
   const std::string& destination() const;
   const std::string& event() const;
+  const std::string& livery_name() const { return livery_name_; }
+  bool airline_auto_detected() const { return airline_auto_detected_; }
   int flight_number() const { return flight_number_; }
   int gate() const { return gate_; }
   float gain() const { return gain_; }
@@ -60,6 +63,10 @@ private:
   void draw_overlay();
   int overlay_mouse(int x, int y, XPLMMouseStatus status);
   bool project_to_screen(int& screen_x, int& screen_y) const;
+  bool project_point(float x, float y, float z, int& screen_x,
+                     int& screen_y) const;
+  bool axis_direction(GizmoDrag axis, float& screen_dx,
+                      float& screen_dy) const;
   float terrain_y(float x, float z, float fallback) const;
   void update_world_position();
   static void cycle_index(size_t& index, int direction, size_t count);
@@ -67,6 +74,7 @@ private:
   AnnouncementEditorState state_{AnnouncementEditorState::Unavailable};
   std::string config_path_;
   std::string status_{"Announcement library not found"};
+  std::string livery_name_;
   std::vector<std::string> airlines_;
   std::vector<std::string> origins_;
   std::vector<std::string> destinations_;
@@ -88,7 +96,9 @@ private:
   float z_{};
   float ground_y_{};
   float altitude_offset_m_{4.0f};
+  bool airline_auto_detected_{};
   XPLMProbeRef probe_{};
+  XPLMDataRef livery_path_ref_{};
   XPLMDataRef world_matrix_ref_{};
   XPLMDataRef projection_matrix_ref_{};
   XPLMWindowID overlay_window_{};
