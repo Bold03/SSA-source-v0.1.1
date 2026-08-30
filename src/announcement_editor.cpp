@@ -69,8 +69,10 @@ bool AnnouncementEditor::load(const std::string& xplane_root) {
       const auto read_keys = [&](const char* group,
                                  std::vector<std::string>& destination) {
         if (!library.contains(group)) return;
-        for (const auto& pair : library.at(group).items())
-          destination.push_back(pair.first);
+        for (const auto& [key, value] : library.at(group).items()) {
+          (void)value;
+          destination.push_back(key);
+        }
         std::sort(destination.begin(), destination.end());
       };
       read_keys("airlines", airlines_);

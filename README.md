@@ -1,7 +1,7 @@
 # SSA — Scenery Service Animation
 
 **Developer:** BoldStudio31  
-**Status:** modular 3D airport announcements beta 0.22.1  
+**Status:** modular 3D airport announcements beta 0.22.2  
 **Targets:** X-Plane 11.50+ and X-Plane 12; Windows, Linux and macOS
 
 SSA is a standalone animation controller for scenery objects. It provides custom
@@ -13,7 +13,10 @@ developers. Open it in a browser, choose a scenery folder and OBJ, and copy the
 sanitized `boldstudio31/ssa/animation/scenery/object` dataref into both Blender
 and `ssa.json`.
 
-## Implemented through 0.22.1
+## Implemented through 0.22.2
+
+- Corrected nlohmann JSON object-key iteration for MSVC and expanded the local
+  validation stub to exercise the same API used by the production dependency.
 
 - Developer Mode now includes an ANN tab for configuring the airline, flight
   number, event, origin/destination, gate, gain and audible radius without
