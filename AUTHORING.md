@@ -373,6 +373,20 @@ For an arrival from Jakarta, omit `destination` and `gate`, then set
 `"origin": "jakarta"` and `"event": "landed"`. A missing key or audio
 file rejects only that composed job; legacy full-file announcements still load.
 
+### Place a composed announcement in X-Plane
+
+Compile and install SSA, open Settings, enable Developer Mode and select the
+`ANN` tab. Choose the airline and event with PREV/NEXT, set the numeric flight
+number and gate, then choose the origin or destination shown for that event.
+GAIN changes source loudness and RADIUS changes its maximum audible distance.
+
+Press `PLACE SPEAKER`. A green volume symbol appears 20 metres ahead of the
+aircraft with draggable X, Y and Z world-axis handles. It is an editor overlay,
+not a scenery OBJ. Use the tablet buttons for precise one-metre horizontal and
+0.1-metre altitude adjustments. `SAVE SPEAKER` appends the completed job and
+coordinates to `flight_announcements` in `ssa.json`, reloads the scenery
+configuration and removes the volume symbol. `CANCEL` changes nothing.
+
 - `radius_m`: maximum audible distance from the active camera.
 - `gain`: source volume from 0.0 to 2.0; begin testing at 0.8.
 - `start_delay_s`: delay after entering the radius before the first playback.

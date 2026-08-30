@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(SSA VERSION 0.22.0 LANGUAGES CXX)
+project(SSA VERSION 0.22.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -33,6 +33,7 @@ add_library(SSA SHARED
   src/route_editor.cpp
   src/vdgs_editor.cpp
   src/announcement.cpp
+  src/announcement_editor.cpp
 )
 
 target_include_directories(SSA PRIVATE

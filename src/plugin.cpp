@@ -4,6 +4,7 @@
 #include "ssa/route_editor.hpp"
 #include "ssa/vdgs_editor.hpp"
 #include "ssa/announcement.hpp"
+#include "ssa/announcement_editor.hpp"
 #include <XPLMMenus.h>
 #include <XPLMPlugin.h>
 #include <XPLMProcessing.h>
@@ -24,6 +25,7 @@ std::unique_ptr<ssa::Tablet> tablet;
 std::unique_ptr<ssa::RouteEditor> route_editor;
 std::unique_ptr<ssa::VdgsEditor> vdgs_editor;
 std::unique_ptr<ssa::AnnouncementManager> announcements;
+std::unique_ptr<ssa::AnnouncementEditor> announcement_editor;
 ssa::FloatDataRef* automatic_ref{};
 ssa::FloatDataRef* vehicle_spin_ref{};
 ssa::FloatDataRef* vehicle_steering_ref{};
@@ -499,6 +501,7 @@ void reload_scenery() {
   }
   if (vdgs_editor) vdgs_editor->load(root);
   if (announcements) announcements->load(root);
+  if (announcement_editor) announcement_editor->load(root);
   // A reloaded jetway must be planned again from a known parked state; old
   // channel targets belong to the previous configuration geometry.
   for (auto& object : scenery->objects())
@@ -693,7 +696,10 @@ PLUGIN_API int XPluginStart(char* name, char* signature, char* description) {
     vdgs_editor->load(root);
     announcements = std::make_unique<ssa::AnnouncementManager>();
     announcements->load(root);
+    announcement_editor = std::make_unique<ssa::AnnouncementEditor>();
+    announcement_editor->load(root);
     tablet = std::make_unique<ssa::Tablet>(*scenery, *route_editor, *vdgs_editor,
+                                           *announcement_editor,
                                            toggle_auto, reload_scenery,
                                            toggle_tablet_object, select_vdgs,
                                            toggle_vehicle_spin_test,
@@ -734,7 +740,7 @@ PLUGIN_API int XPluginStart(char* name, char* signature, char* description) {
     XPLMAppendMenuItem(menu, "Toggle nearest hangar", reinterpret_cast<void*>(3), 0);
     XPLMAppendMenuItem(menu, "Toggle nearest jetway", reinterpret_cast<void*>(4), 0);
     XPLMRegisterFlightLoopCallback(flight_loop, -1.0f, nullptr);
-    log("SSA 0.22.0 started: " + std::to_string(scenery->objects().size()) +
+    log("SSA 0.22.1 started: " + std::to_string(scenery->objects().size()) +
         " object(s), " + std::to_string(announcements->source_count()) +
         " 3D announcement(s), L1 door dataref " +
         (door_open_ref ? "detected" : "not found"));
@@ -759,6 +765,7 @@ PLUGIN_API void XPluginStop() {
   if (menu) XPLMDestroyMenu(menu);
   tablet.reset();
   announcements.reset();
+  announcement_editor.reset();
   vdgs_editor.reset();
   route_editor.reset();
   scenery.reset();

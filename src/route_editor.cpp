@@ -654,7 +654,7 @@ void RouteEditor::draw_planner() {
   for (size_t i = 0; i < points_.size(); ++i) {
     int sx{}, sy{};
     screen(points_[i], sx, sy);
-    char marker[24];
+    char marker[32];
     std::snprintf(marker, sizeof(marker), "[ A%zu ]", i + 1);
     XPLMDrawString(marker_color, sx - 10, sy, marker, nullptr,
                    xplmFont_Proportional);

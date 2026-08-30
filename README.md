@@ -1,7 +1,7 @@
 # SSA — Scenery Service Animation
 
 **Developer:** BoldStudio31  
-**Status:** modular 3D airport announcements beta 0.22.0  
+**Status:** modular 3D airport announcements beta 0.22.1  
 **Targets:** X-Plane 11.50+ and X-Plane 12; Windows, Linux and macOS
 
 SSA is a standalone animation controller for scenery objects. It provides custom
@@ -13,7 +13,14 @@ developers. Open it in a browser, choose a scenery folder and OBJ, and copy the
 sanitized `boldstudio31/ssa/animation/scenery/object` dataref into both Blender
 and `ssa.json`.
 
-## Implemented through 0.22.0
+## Implemented through 0.22.1
+
+- Developer Mode now includes an ANN tab for configuring the airline, flight
+  number, event, origin/destination, gate, gain and audible radius without
+  editing JSON manually.
+- PLACE SPEAKER opens a perspective 3D placement overlay modelled after the
+  VDGS editor. Its volume icon and X/Y/Z gizmo are authoring aids only and
+  disappear after the source position is saved to the scenery's ssa.json.
 
 - The Announcement Composer joins reusable airline, digit, origin,
   destination, event and gate WAV clips into a complete 3D flight
