@@ -24,6 +24,8 @@ public:
   void adjust_altitude(float metres);
   void cancel();
   bool save();
+  bool request_delete_nearest(double aircraft_latitude,
+                              double aircraft_longitude);
 
   void next_airline(int direction);
   void next_origin(int direction);
@@ -43,6 +45,9 @@ public:
   const std::string& event() const;
   const std::string& livery_name() const { return livery_name_; }
   bool airline_auto_detected() const { return airline_auto_detected_; }
+  bool delete_confirmation_pending() const {
+    return !pending_delete_id_.empty();
+  }
   int flight_number() const { return flight_number_; }
   int gate() const { return gate_; }
   float gain() const { return gain_; }
@@ -54,6 +59,7 @@ public:
 private:
   enum class GizmoDrag { None, MoveX, MoveY, MoveZ };
   static void draw_callback(XPLMWindowID window, void* refcon);
+  static void draw_guide_callback(XPLMWindowID window, void* refcon);
   static int mouse_callback(XPLMWindowID window, int x, int y,
                             XPLMMouseStatus status, void* refcon);
   static XPLMCursorStatus cursor_callback(XPLMWindowID window, int x, int y,
@@ -61,6 +67,7 @@ private:
   void open_overlay();
   void close_overlay();
   void draw_overlay();
+  void draw_radius_guides();
   int overlay_mouse(int x, int y, XPLMMouseStatus status);
   bool project_to_screen(int& screen_x, int& screen_y) const;
   bool project_point(float x, float y, float z, int& screen_x,
@@ -75,6 +82,7 @@ private:
   std::string config_path_;
   std::string status_{"Announcement library not found"};
   std::string livery_name_;
+  std::string pending_delete_id_;
   std::vector<std::string> airlines_;
   std::vector<std::string> origins_;
   std::vector<std::string> destinations_;
@@ -102,6 +110,7 @@ private:
   XPLMDataRef world_matrix_ref_{};
   XPLMDataRef projection_matrix_ref_{};
   XPLMWindowID overlay_window_{};
+  XPLMWindowID guide_window_{};
   GizmoDrag gizmo_drag_{GizmoDrag::None};
   int drag_last_x_{};
   int drag_last_y_{};

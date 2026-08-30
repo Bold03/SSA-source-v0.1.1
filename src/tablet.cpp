@@ -192,6 +192,11 @@ void Tablet::draw_impl() {
                   announcement_editor_.gain(),
                   announcement_editor_.radius_m());
     label(l + 22, t - 395, value, 0.55f, 0.85f, 0.75f);
+    button(l + 22, t - 383, l + 235, t - 418,
+           announcement_editor_.delete_confirmation_pending()
+               ? "CONFIRM DELETE"
+               : "DELETE NEAREST",
+           1.0f, 0.30f, 0.25f);
     button(l + 245, t - 383, r - 22, t - 418, "PLACE SPEAKER",
            1.0f, 0.72f, 0.20f);
     label(l + 22, b + 20, "Click airline name to AUTO-detect active livery",
@@ -217,9 +222,20 @@ void Tablet::draw_impl() {
       button(l + 22, t - 232, l + 152, t - 264, "ROTATE -5");
       button(l + 172, t - 232, l + 342, t - 264, "SAVE VDGS", 1.0f, 0.72f, 0.20f);
       button(l + 362, t - 232, r - 22, t - 264, "ROTATE +5");
-      button(l + 22, t - 274, l + 152, t - 306, "CANCEL", 1.0f, 0.72f, 0.20f);
-      label(l + 172, t - 292, vdgs_editor_.status().c_str(), 0.75f, 0.85f, 0.95f);
-      label(l + 22, b + 42, "Drag the 3D gizmo; buttons remain for precise adjustment.",
+      button(l + 22, t - 274, l + 127, t - 306, "RANGE -10");
+      button(l + 137, t - 274, l + 242, t - 306, "WIDTH -1");
+      button(l + 252, t - 274, l + 357, t - 306, "WIDTH +1");
+      button(l + 367, t - 274, r - 22, t - 306, "RANGE +10");
+      char detection[120];
+      std::snprintf(detection, sizeof(detection),
+                    "Detection %.0f m | Corridor width %.0f m",
+                    vdgs_editor_.acquisition_distance_m(),
+                    vdgs_editor_.corridor_half_width_m() * 2.0f);
+      button(l + 22, t - 316, l + 152, t - 348, "CANCEL", 1.0f, 0.72f, 0.20f);
+      label(l + 172, t - 328, detection, 0.55f, 0.85f, 0.75f);
+      label(l + 172, t - 350, vdgs_editor_.status().c_str(), 0.75f, 0.85f, 0.95f);
+      label(l + 22, b + 42,
+            "RED detection | GREEN correction | YELLOW nose-wheel stop",
             1.0f, 0.72f, 0.20f);
       return;
     }
@@ -535,9 +551,13 @@ int Tablet::mouse_impl(int x, int y, XPLMMouseStatus status) {
       else if (x >= l + 137 && x <= l + 242) announcement_editor_.adjust_gain(0.1f);
       else if (x >= l + 252 && x <= l + 357) announcement_editor_.adjust_radius(-25.0f);
       else if (x >= l + 367 && x <= r - 22) announcement_editor_.adjust_radius(25.0f);
-    } else if (x >= l + 245 && x <= r - 22 &&
-               y <= t - 383 && y >= t - 418) {
-      announcement_editor_.begin(latitude_, longitude_, heading_);
+    } else if (y <= t - 383 && y >= t - 418) {
+      if (x >= l + 22 && x <= l + 235) {
+        if (announcement_editor_.request_delete_nearest(latitude_, longitude_))
+          reload_config_();
+      } else if (x >= l + 245 && x <= r - 22) {
+        announcement_editor_.begin(latitude_, longitude_, heading_);
+      }
     }
     return 1;
   }
@@ -559,7 +579,16 @@ int Tablet::mouse_impl(int x, int y, XPLMMouseStatus status) {
         else if (column_middle) {
           if (vdgs_editor_.save()) reload_config_();
         } else if (column_right) vdgs_editor_.turn(5.0f);
-      } else if (column_left && y <= t - 274 && y >= t - 306) {
+      } else if (y <= t - 274 && y >= t - 306) {
+        if (x >= l + 22 && x <= l + 127)
+          vdgs_editor_.adjust_acquisition_distance(-10.0f);
+        else if (x >= l + 137 && x <= l + 242)
+          vdgs_editor_.adjust_corridor_half_width(-1.0f);
+        else if (x >= l + 252 && x <= l + 357)
+          vdgs_editor_.adjust_corridor_half_width(1.0f);
+        else if (x >= l + 367 && x <= r - 22)
+          vdgs_editor_.adjust_acquisition_distance(10.0f);
+      } else if (column_left && y <= t - 316 && y >= t - 348) {
         vdgs_editor_.cancel();
       }
       return 1;

@@ -78,8 +78,10 @@ AnnouncementEditor::~AnnouncementEditor() { unload(); }
 void AnnouncementEditor::unload() {
   close_overlay();
   if (overlay_window_) XPLMDestroyWindow(overlay_window_);
+  if (guide_window_) XPLMDestroyWindow(guide_window_);
   if (probe_) XPLMDestroyProbe(probe_);
   overlay_window_ = nullptr;
+  guide_window_ = nullptr;
   probe_ = nullptr;
   world_matrix_ref_ = nullptr;
   projection_matrix_ref_ = nullptr;
@@ -90,6 +92,7 @@ void AnnouncementEditor::unload() {
   destinations_.clear();
   events_.clear();
   livery_name_.clear();
+  pending_delete_id_.clear();
   airline_auto_detected_ = false;
   state_ = AnnouncementEditorState::Unavailable;
 }
@@ -242,6 +245,7 @@ float AnnouncementEditor::terrain_y(float x, float z, float fallback) const {
 void AnnouncementEditor::begin(double aircraft_latitude, double aircraft_longitude,
                                float aircraft_heading) {
   if (state_ == AnnouncementEditorState::Unavailable) return;
+  pending_delete_id_.clear();
   detect_airline_from_livery();
   double aircraft_x{}, aircraft_y{}, aircraft_z{};
   XPLMWorldToLocal(aircraft_latitude, aircraft_longitude, 0.0,
@@ -354,12 +358,117 @@ bool AnnouncementEditor::save() {
   }
 }
 
+bool AnnouncementEditor::request_delete_nearest(double aircraft_latitude,
+                                                double aircraft_longitude) {
+  if (state_ != AnnouncementEditorState::Idle || config_path_.empty())
+    return false;
+  try {
+    std::ifstream input(config_path_);
+    json root = json::parse(input);
+    if (!root.contains("flight_announcements") ||
+        !root.at("flight_announcements").is_array() ||
+        root.at("flight_announcements").empty()) {
+      pending_delete_id_.clear();
+      status_ = "No saved speakers to delete";
+      return false;
+    }
+
+    double aircraft_x{}, aircraft_y{}, aircraft_z{};
+    XPLMWorldToLocal(aircraft_latitude, aircraft_longitude, 0.0, &aircraft_x,
+                     &aircraft_y, &aircraft_z);
+    auto& announcements = root["flight_announcements"];
+    size_t nearest_index = 0;
+    std::string nearest_id;
+    double nearest_distance_squared = std::numeric_limits<double>::max();
+    bool found = false;
+    size_t index = 0;
+    for (const auto& item : announcements) {
+      const double item_latitude = item.value(
+          "latitude", std::numeric_limits<double>::quiet_NaN());
+      const double item_longitude = item.value(
+          "longitude", std::numeric_limits<double>::quiet_NaN());
+      if (!std::isfinite(item_latitude) || !std::isfinite(item_longitude)) {
+        ++index;
+        continue;
+      }
+      double speaker_x{}, speaker_y{}, speaker_z{};
+      XPLMWorldToLocal(item_latitude, item_longitude,
+                       item.value("altitude_m", 0.0), &speaker_x, &speaker_y,
+                       &speaker_z);
+      const double dx = speaker_x - aircraft_x;
+      const double dz = speaker_z - aircraft_z;
+      const double distance_squared = dx * dx + dz * dz;
+      if (distance_squared < nearest_distance_squared) {
+        nearest_distance_squared = distance_squared;
+        nearest_index = index;
+        nearest_id = item.value(
+            "id", "speaker_" + std::to_string(nearest_index + 1));
+        found = true;
+      }
+      ++index;
+    }
+    if (!found) {
+      pending_delete_id_.clear();
+      status_ = "No speaker with valid coordinates found";
+      return false;
+    }
+
+    const std::string& id = nearest_id;
+    const double distance_m = std::sqrt(nearest_distance_squared);
+    if (pending_delete_id_ != id) {
+      pending_delete_id_ = id;
+      char confirmation[180];
+      std::snprintf(confirmation, sizeof(confirmation),
+                    "DELETE %s at %.1f m? Press DELETE again", id.c_str(),
+                    distance_m);
+      status_ = confirmation;
+      return false;
+    }
+
+    json retained = json::array();
+    index = 0;
+    for (const auto& item : announcements) {
+      if (index != nearest_index) retained.push_back(item);
+      ++index;
+    }
+    root["flight_announcements"] = retained;
+    std::ofstream output(config_path_);
+    output << root.dump(2) << '\n';
+    if (!output) throw std::runtime_error("Cannot write ssa.json");
+    pending_delete_id_.clear();
+    status_ = "Deleted " + id + " from ssa.json";
+    return true;
+  } catch (const std::exception& error) {
+    pending_delete_id_.clear();
+    status_ = error.what();
+    return false;
+  }
+}
+
 void AnnouncementEditor::open_overlay() {
   int screen_left{}, screen_top{}, screen_right{}, screen_bottom{};
   XPLMGetScreenBoundsGlobal(&screen_left, &screen_top, &screen_right, &screen_bottom);
   const int center_x = (screen_left + screen_right) / 2;
   const int center_y = (screen_top + screen_bottom) / 2;
   constexpr int half = 150;
+  if (!guide_window_) {
+    XPLMCreateWindow_t guide_params{};
+    guide_params.structSize = sizeof(guide_params);
+    guide_params.left = screen_left;
+    guide_params.top = screen_top;
+    guide_params.right = screen_right;
+    guide_params.bottom = screen_bottom;
+    guide_params.visible = 1;
+    guide_params.drawWindowFunc = draw_guide_callback;
+    guide_params.refcon = this;
+    guide_params.layer = xplm_WindowLayerFlightOverlay;
+    guide_params.decorateAsFloatingWindow = xplm_WindowDecorationNone;
+    guide_window_ = XPLMCreateWindowEx(&guide_params);
+  } else {
+    XPLMSetWindowGeometry(guide_window_, screen_left, screen_top, screen_right,
+                          screen_bottom);
+    XPLMSetWindowIsVisible(guide_window_, 1);
+  }
   if (!overlay_window_) {
     XPLMCreateWindow_t params{};
     params.structSize = sizeof(params);
@@ -380,9 +489,48 @@ void AnnouncementEditor::open_overlay() {
 void AnnouncementEditor::close_overlay() {
   gizmo_drag_ = GizmoDrag::None;
   if (overlay_window_) XPLMSetWindowIsVisible(overlay_window_, 0);
+  if (guide_window_) XPLMSetWindowIsVisible(guide_window_, 0);
 }
 void AnnouncementEditor::draw_callback(XPLMWindowID, void* refcon) {
   static_cast<AnnouncementEditor*>(refcon)->draw_overlay();
+}
+void AnnouncementEditor::draw_guide_callback(XPLMWindowID, void* refcon) {
+  static_cast<AnnouncementEditor*>(refcon)->draw_radius_guides();
+}
+
+void AnnouncementEditor::draw_radius_guides() {
+  if (state_ != AnnouncementEditorState::Placing || !guide_window_) return;
+  int screen_left{}, screen_top{}, screen_right{}, screen_bottom{};
+  XPLMGetScreenBoundsGlobal(&screen_left, &screen_top, &screen_right,
+                            &screen_bottom);
+  XPLMSetWindowGeometry(guide_window_, screen_left, screen_top, screen_right,
+                        screen_bottom);
+  char dot[] = ".";
+  constexpr int segments = 48;
+  for (int ring = 1; ring <= 4; ++ring) {
+    const float ring_radius = radius_m_ * static_cast<float>(ring) / 4.0f;
+    const float brightness = ring == 4 ? 1.0f : 0.60f;
+    for (int segment = 0; segment < segments; ++segment) {
+      const float angle = 2.0f * pi * static_cast<float>(segment) /
+                          static_cast<float>(segments);
+      const float guide_x = x_ + std::cos(angle) * ring_radius;
+      const float guide_z = z_ + std::sin(angle) * ring_radius;
+      int pixel_x{}, pixel_y{};
+      if (!project_point(guide_x, ground_y_ + 0.08f, guide_z, pixel_x,
+                         pixel_y))
+        continue;
+      draw_text(pixel_x, pixel_y, dot, 0.20f, brightness, 0.70f);
+    }
+  }
+  int label_x{}, label_y{};
+  if (project_point(x_ + radius_m_, ground_y_ + 0.08f, z_, label_x,
+                    label_y)) {
+    char label[64];
+    std::snprintf(label, sizeof(label), "AUDIO RADIUS %.0f M", radius_m_);
+    XPLMDrawTranslucentDarkBox(label_x - 8, label_y + 18, label_x + 145,
+                               label_y - 8);
+    draw_text(label_x, label_y, label, 0.25f, 1.0f, 0.65f);
+  }
 }
 void AnnouncementEditor::draw_overlay() {
   if (state_ != AnnouncementEditorState::Placing || !overlay_window_) return;

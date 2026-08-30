@@ -38,7 +38,8 @@ ssa::FloatDataRef* vdgs_stop_ref{};
 ssa::FloatDataRef* vdgs_lateral_ref{};
 ssa::FloatDataRef* vdgs_distance_ref{};
 XPLMDataRef lat_ref{}, lon_ref{}, heading_ref{}, icao_ref{}, door_open_ref{}, prop_ref{},
-    onground_ref{}, groundspeed_ref{}, aircraft_length_ref{};
+    onground_ref{}, groundspeed_ref{}, aircraft_length_ref{}, gear_x_ref{},
+    gear_z_ref{};
 XPLMCommandRef tablet_command{};
 XPLMCommandRef reload_command{};
 XPLMCommandRef hangar_toggle_command{};
@@ -78,6 +79,28 @@ void clear_vdgs_datarefs() {
   if (vdgs_stop_ref) vdgs_stop_ref->set(0.0f);
   if (vdgs_lateral_ref) vdgs_lateral_ref->set(0.5f);
   if (vdgs_distance_ref) vdgs_distance_ref->set(1.0f);
+}
+
+bool nose_gear_offset(float& forward_m, float& right_m) {
+  forward_m = 0.0f;
+  right_m = 0.0f;
+  if (!gear_x_ref || !gear_z_ref) return false;
+  float gear_x[10]{};
+  float gear_z[10]{};
+  const int x_count = XPLMGetDatavf(gear_x_ref, gear_x, 0, 10);
+  const int z_count = XPLMGetDatavf(gear_z_ref, gear_z, 0, 10);
+  const int count = std::min(x_count, z_count);
+  if (count <= 0) return false;
+  int forward_gear = 0;
+  for (int index = 1; index < count; ++index)
+    if (gear_z[index] < gear_z[forward_gear]) forward_gear = index;
+  // X-Plane aircraft coordinates use negative Z in the forward direction.
+  // The most-forward gear is therefore the smallest Z value.
+  forward_m = -gear_z[forward_gear];
+  right_m = gear_x[forward_gear];
+  return std::isfinite(forward_m) && std::isfinite(right_m) &&
+         forward_m > 0.25f && forward_m < 80.0f &&
+         std::abs(right_m) < 20.0f;
 }
 
 void update_vdgs(double aircraft_lat, double aircraft_lon) {
@@ -122,9 +145,11 @@ void update_vdgs(double aircraft_lat, double aircraft_lon) {
         static_cast<float>(east * std::cos(angle) - north * std::sin(angle));
     const float candidate_forward =
         static_cast<float>(east * std::sin(angle) + north * std::cos(angle));
+    const float candidate_radius =
+        std::hypot(candidate_forward, candidate_lateral);
     const bool inside_corridor =
         candidate_forward > 0.0f &&
-        candidate_forward <= candidate->vdgs.acquisition_distance_m &&
+        candidate_radius <= candidate->vdgs.acquisition_distance_m &&
         std::abs(candidate_lateral) <= candidate->vdgs.corridor_half_width_m;
     if (!inside_corridor) continue;
     display = candidate;
@@ -144,7 +169,26 @@ void update_vdgs(double aircraft_lat, double aircraft_lon) {
   }
 
   float effective_stop_m = display->vdgs.stop_distance_m;
-  if (display->vdgs.use_aircraft_length && aircraft_length_ref) {
+  float guidance_forward = forward;
+  float guidance_lateral = lateral;
+  float nose_gear_forward{}, nose_gear_right{};
+  const bool has_nose_gear = display->vdgs.use_aircraft_length &&
+                             nose_gear_offset(nose_gear_forward,
+                                              nose_gear_right);
+  if (has_nose_gear) {
+    // The yellow parking line represents the nose-wheel contact position.
+    // Convert the aircraft reference/CG position to the forward nose-wheel
+    // position before calculating SLOW, STOP and overshoot.
+    const float aircraft_heading = heading_ref ? XPLMGetDataf(heading_ref) :
+                                                 display->vdgs.object_heading_deg;
+    const float relative_angle =
+        (aircraft_heading - display->vdgs.object_heading_deg) *
+        static_cast<float>(radians);
+    guidance_forward += nose_gear_forward * std::cos(relative_angle) -
+                        nose_gear_right * std::sin(relative_angle);
+    guidance_lateral += nose_gear_forward * std::sin(relative_angle) +
+                        nose_gear_right * std::cos(relative_angle);
+  } else if (display->vdgs.use_aircraft_length && aircraft_length_ref) {
     const float aircraft_length_m = XPLMGetDataf(aircraft_length_ref);
     // X-Plane publishes the aircraft length in metres. Half its length is a
     // robust initial nose offset for arbitrary aircraft; the configurable
@@ -154,8 +198,8 @@ void update_vdgs(double aircraft_lat, double aircraft_lon) {
                                   aircraft_length_m * 0.5f +
                                       display->vdgs.nose_clearance_m);
   }
-  const float distance_error = forward - effective_stop_m;
-  display->vdgs_lateral_error_m = lateral;
+  const float distance_error = guidance_forward - effective_stop_m;
+  display->vdgs_lateral_error_m = guidance_lateral;
   display->vdgs_distance_error_m = distance_error;
   display->vdgs_effective_stop_m = effective_stop_m;
 
@@ -166,12 +210,13 @@ void update_vdgs(double aircraft_lat, double aircraft_lon) {
                                           0.0f, 1.0f);
   const float lateral_ratio = std::clamp(
       0.5f + display->vdgs.lateral_multiplier *
-                 (lateral / display->vdgs.lateral_full_scale_m) * 0.5f,
+                 (guidance_lateral / display->vdgs.lateral_full_scale_m) * 0.5f,
       0.0f, 1.0f);
-  const bool too_right = lateral > display->vdgs.lateral_deadband_m;
-  const bool too_left = lateral < -display->vdgs.lateral_deadband_m;
+  const bool too_right = guidance_lateral > display->vdgs.lateral_deadband_m;
+  const bool too_left = guidance_lateral < -display->vdgs.lateral_deadband_m;
   const bool stopped = std::abs(distance_error) <= display->vdgs.stop_tolerance_m &&
-                       std::abs(lateral) <= display->vdgs.lateral_stop_tolerance_m;
+                       std::abs(guidance_lateral) <=
+                           display->vdgs.lateral_stop_tolerance_m;
   const bool overshot = distance_error < -display->vdgs.stop_tolerance_m;
   const bool slow = !stopped && !overshot && distance_error <= display->vdgs.slow_distance_m;
 
@@ -714,6 +759,8 @@ PLUGIN_API int XPluginStart(char* name, char* signature, char* description) {
     onground_ref = XPLMFindDataRef("sim/flightmodel/failures/onground_any");
     groundspeed_ref = XPLMFindDataRef("sim/flightmodel/position/groundspeed");
     aircraft_length_ref = XPLMFindDataRef("sim/aircraft/view/acf_length");
+    gear_x_ref = XPLMFindDataRef("sim/aircraft/parts/acf_gear_xnodef");
+    gear_z_ref = XPLMFindDataRef("sim/aircraft/parts/acf_gear_znodef");
 
     tablet_command = XPLMCreateCommand("boldstudio31/ssa/tablet/toggle", "Toggle SSA tablet");
     XPLMRegisterCommandHandler(tablet_command, command_handler, 1, nullptr);
@@ -740,7 +787,7 @@ PLUGIN_API int XPluginStart(char* name, char* signature, char* description) {
     XPLMAppendMenuItem(menu, "Toggle nearest hangar", reinterpret_cast<void*>(3), 0);
     XPLMAppendMenuItem(menu, "Toggle nearest jetway", reinterpret_cast<void*>(4), 0);
     XPLMRegisterFlightLoopCallback(flight_loop, -1.0f, nullptr);
-    log("SSA 0.23.0 started: " + std::to_string(scenery->objects().size()) +
+    log("SSA 0.24.1 started: " + std::to_string(scenery->objects().size()) +
         " object(s), " + std::to_string(announcements->source_count()) +
         " 3D announcement(s), L1 door dataref " +
         (door_open_ref ? "detected" : "not found"));

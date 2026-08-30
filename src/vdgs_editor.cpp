@@ -3,6 +3,7 @@
 #include <nlohmann/json.hpp>
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <stdexcept>
@@ -44,7 +45,9 @@ float VdgsEditor::normalize_heading(float heading) {
 void VdgsEditor::unload() {
   close_gizmo();
   if (gizmo_window_) XPLMDestroyWindow(gizmo_window_);
+  if (guide_window_) XPLMDestroyWindow(guide_window_);
   gizmo_window_ = nullptr;
+  guide_window_ = nullptr;
   if (preview_instance_) XPLMDestroyInstance(preview_instance_);
   if (preview_object_) XPLMUnloadObject(preview_object_);
   if (probe_) XPLMDestroyProbe(probe_);
@@ -199,6 +202,8 @@ void VdgsEditor::begin(double aircraft_latitude, double aircraft_longitude,
   z_ = static_cast<float>(aircraft_z) - std::cos(angle) * 20.0f;
   ground_y_ = terrain_y(x_, z_, static_cast<float>(aircraft_y));
   altitude_offset_m_ = 0.0f;
+  acquisition_distance_m_ = 80.0f;
+  corridor_half_width_m_ = 8.0f;
   y_ = ground_y_;
   heading_ = normalize_heading(aircraft_heading + 180.0f);
   double ignored_altitude{};
@@ -217,6 +222,24 @@ void VdgsEditor::open_gizmo() {
   const int center_x = (screen_left + screen_right) / 2;
   const int center_y = (screen_top + screen_bottom) / 2;
   constexpr int half = 130;
+  if (!guide_window_) {
+    XPLMCreateWindow_t guide_params{};
+    guide_params.structSize = sizeof(guide_params);
+    guide_params.left = screen_left;
+    guide_params.top = screen_top;
+    guide_params.right = screen_right;
+    guide_params.bottom = screen_bottom;
+    guide_params.visible = 1;
+    guide_params.drawWindowFunc = draw_guide_callback;
+    guide_params.refcon = this;
+    guide_params.layer = xplm_WindowLayerFlightOverlay;
+    guide_params.decorateAsFloatingWindow = xplm_WindowDecorationNone;
+    guide_window_ = XPLMCreateWindowEx(&guide_params);
+  } else {
+    XPLMSetWindowGeometry(guide_window_, screen_left, screen_top, screen_right,
+                          screen_bottom);
+    XPLMSetWindowIsVisible(guide_window_, 1);
+  }
   if (!gizmo_window_) {
     XPLMCreateWindow_t params{};
     params.structSize = sizeof(params);
@@ -242,10 +265,91 @@ void VdgsEditor::open_gizmo() {
 void VdgsEditor::close_gizmo() {
   gizmo_drag_ = GizmoDrag::None;
   if (gizmo_window_) XPLMSetWindowIsVisible(gizmo_window_, 0);
+  if (guide_window_) XPLMSetWindowIsVisible(guide_window_, 0);
 }
 
 void VdgsEditor::draw_gizmo_callback(XPLMWindowID, void* refcon) {
   static_cast<VdgsEditor*>(refcon)->draw_gizmo();
+}
+
+void VdgsEditor::draw_guide_callback(XPLMWindowID, void* refcon) {
+  static_cast<VdgsEditor*>(refcon)->draw_detection_guides();
+}
+
+void VdgsEditor::draw_detection_guides() {
+  if (state_ != VdgsEditorState::Placing || !guide_window_) return;
+  int screen_left{}, screen_top{}, screen_right{}, screen_bottom{};
+  XPLMGetScreenBoundsGlobal(&screen_left, &screen_top, &screen_right,
+                            &screen_bottom);
+  XPLMSetWindowGeometry(guide_window_, screen_left, screen_top, screen_right,
+                        screen_bottom);
+
+  float green[] = {0.25f, 1.0f, 0.40f};
+  float red[] = {1.0f, 0.25f, 0.20f};
+  float yellow[] = {1.0f, 0.75f, 0.20f};
+  char dot[] = ".";
+  constexpr int circle_segments = 48;
+  for (int ring = 1; ring <= 4; ++ring) {
+    const float radius = acquisition_distance_m_ * ring / 4.0f;
+    for (int segment = 0; segment < circle_segments; ++segment) {
+      const float angle = 2.0f * pi * segment / circle_segments;
+      int pixel_x{}, pixel_y{};
+      if (!project_point(x_ + std::cos(angle) * radius, ground_y_ + 0.08f,
+                         z_ + std::sin(angle) * radius, pixel_x, pixel_y))
+        continue;
+      XPLMDrawString(red, pixel_x, pixel_y, dot, nullptr,
+                     xplmFont_Proportional);
+    }
+  }
+
+  const float heading_angle = heading_ * pi / 180.0f;
+  const float forward_x = std::sin(heading_angle);
+  const float forward_z = -std::cos(heading_angle);
+  const float right_x = std::cos(heading_angle);
+  const float right_z = std::sin(heading_angle);
+  constexpr int line_segments = 40;
+  for (int segment = 0; segment <= line_segments; ++segment) {
+    const float distance = acquisition_distance_m_ * segment / line_segments;
+    for (const float side : {-corridor_half_width_m_, 0.0f,
+                             corridor_half_width_m_}) {
+      const float guide_x = x_ + forward_x * distance + right_x * side;
+      const float guide_z = z_ + forward_z * distance + right_z * side;
+      int pixel_x{}, pixel_y{};
+      if (!project_point(guide_x, ground_y_ + 0.12f, guide_z, pixel_x,
+                         pixel_y))
+        continue;
+      XPLMDrawString(green, pixel_x, pixel_y, dot, nullptr,
+                     xplmFont_Proportional);
+    }
+  }
+
+  for (int segment = 0; segment <= 24; ++segment) {
+    const float side = -corridor_half_width_m_ +
+                       2.0f * corridor_half_width_m_ * segment / 24.0f;
+    const float stop_distance = 18.0f;
+    int pixel_x{}, pixel_y{};
+    if (!project_point(x_ + forward_x * stop_distance + right_x * side,
+                       ground_y_ + 0.15f,
+                       z_ + forward_z * stop_distance + right_z * side,
+                       pixel_x, pixel_y))
+      continue;
+    XPLMDrawString(yellow, pixel_x, pixel_y, dot, nullptr,
+                   xplmFont_Proportional);
+  }
+
+  int label_x{}, label_y{};
+  if (project_point(x_ + forward_x * acquisition_distance_m_,
+                    ground_y_ + 0.15f,
+                    z_ + forward_z * acquisition_distance_m_, label_x,
+                    label_y)) {
+    char label[96];
+    std::snprintf(label, sizeof(label), "VDGS RANGE %.0f M | WIDTH %.0f M",
+                  acquisition_distance_m_, corridor_half_width_m_ * 2.0f);
+    XPLMDrawTranslucentDarkBox(label_x - 8, label_y + 18, label_x + 190,
+                               label_y - 8);
+    XPLMDrawString(red, label_x, label_y, label, nullptr,
+                   xplmFont_Proportional);
+  }
 }
 
 void VdgsEditor::draw_gizmo() {
@@ -289,13 +393,18 @@ void VdgsEditor::draw_gizmo() {
 }
 
 bool VdgsEditor::project_object_to_screen(int& screen_x, int& screen_y) const {
+  return project_point(x_, y_ + 2.0f, z_, screen_x, screen_y);
+}
+
+bool VdgsEditor::project_point(float world_x, float world_y, float world_z,
+                               int& screen_x, int& screen_y) const {
   if (!world_matrix_ref_ || !projection_matrix_ref_) return false;
   float world_matrix[16]{};
   float projection_matrix[16]{};
   if (XPLMGetDatavf(world_matrix_ref_, world_matrix, 0, 16) != 16 ||
       XPLMGetDatavf(projection_matrix_ref_, projection_matrix, 0, 16) != 16)
     return false;
-  const float world_position[4] = {x_, y_ + 2.0f, z_, 1.0f};
+  const float world_position[4] = {world_x, world_y, world_z, 1.0f};
   float eye_position[4]{};
   float clip_position[4]{};
   multiply_matrix_vector(eye_position, world_matrix, world_position);
@@ -411,6 +520,20 @@ void VdgsEditor::adjust_altitude(float metres) {
   show_preview();
 }
 
+void VdgsEditor::adjust_acquisition_distance(float metres) {
+  if (state_ != VdgsEditorState::Placing) return;
+  acquisition_distance_m_ =
+      std::clamp(acquisition_distance_m_ + metres, 25.0f, 250.0f);
+  status_ = "VDGS acquisition range adjusted";
+}
+
+void VdgsEditor::adjust_corridor_half_width(float metres) {
+  if (state_ != VdgsEditorState::Placing) return;
+  corridor_half_width_m_ =
+      std::clamp(corridor_half_width_m_ + metres, 2.0f, 30.0f);
+  status_ = "VDGS corridor width adjusted";
+}
+
 void VdgsEditor::show_preview() {
   if (!preview_instance_ || state_ != VdgsEditorState::Placing) return;
   XPLMDrawInfo_t draw{};
@@ -460,12 +583,13 @@ bool VdgsEditor::save() {
         {"id", id}, {"label", "VDGS " + std::to_string(number)},
         {"type", "parking_display"}, {"object", relative_object_path_},
         {"latitude", latitude_}, {"longitude", longitude_},
-        {"altitude_m", altitude_m_}, {"heading", heading_}, {"radius_m", 90.0f},
+        {"altitude_m", altitude_m_}, {"heading", heading_},
+        {"radius_m", acquisition_distance_m_},
         {"dataref", "boldstudio31/ssa/animation/vdgs/" + id + "/state"}};
     item["vdgs"] = {{"object_heading_deg", heading_}, {"stop_distance_m", 18.0f},
                      {"use_aircraft_length", true}, {"nose_clearance_m", 2.5f},
-                     {"acquisition_distance_m", 80.0f},
-                     {"corridor_half_width_m", 8.0f}, {"slow_distance_m", 12.0f},
+                     {"acquisition_distance_m", acquisition_distance_m_},
+                     {"corridor_half_width_m", corridor_half_width_m_}, {"slow_distance_m", 12.0f},
                      {"stop_tolerance_m", 0.5f}, {"lateral_full_scale_m", 3.0f},
                      {"lateral_deadband_m", 0.15f},
                      {"lateral_stop_tolerance_m", 0.35f},

@@ -1,7 +1,7 @@
 # SSA — Scenery Service Animation
 
 **Developer:** BoldStudio31  
-**Status:** modular 3D airport announcements beta 0.23.0  
+**Status:** modular 3D airport announcements beta 0.24.1  
 **Targets:** X-Plane 11.50+ and X-Plane 12; Windows, Linux and macOS
 
 SSA is a standalone animation controller for scenery objects. It provides custom
@@ -13,7 +13,7 @@ developers. Open it in a browser, choose a scenery folder and OBJ, and copy the
 sanitized `boldstudio31/ssa/animation/scenery/object` dataref into both Blender
 and `ssa.json`.
 
-## Implemented through 0.23.0
+## Implemented through 0.24.1
 
 - Corrected nlohmann JSON object-key iteration for MSVC and expanded the local
   validation stub to exercise the same API used by the production dependency.
@@ -29,6 +29,19 @@ and `ssa.json`.
   editor opens or placement starts, then matches common airline names such as
   Garuda, Citilink and Batik automatically. Click the airline value to rerun
   detection, or use the arrow buttons to override it manually.
+- DELETE NEAREST finds the saved speaker closest to the user aircraft. The
+  first press displays its ID and distance; a second press confirms deletion
+  from ssa.json and reloads the scenery configuration.
+- Speaker placement projects four concentric ground rings up to the configured
+  audible radius, making terminal coverage visible before saving.
+- VDGS placement uses red acquisition rings as the actual detection boundary,
+  green centre/corridor guides for lateral correction and a yellow transverse
+  parking line for the nose wheel. Aircraft outside the red radius cannot be
+  acquired. Tablet controls adjust acquisition range in 10 m steps and
+  corridor half-width in 1 m steps; the chosen values are saved directly.
+- STOP guidance reads the current aircraft's forward-most landing-gear offset
+  and transforms the nose-wheel position into VDGS coordinates. Aircraft
+  length remains a fallback for models that do not publish usable gear data.
 
 - The Announcement Composer joins reusable airline, digit, origin,
   destination, event and gate WAV clips into a complete 3D flight

@@ -38,6 +38,8 @@ public:
   void move_world_z(float metres);
   void turn(float degrees);
   void adjust_altitude(float metres);
+  void adjust_acquisition_distance(float metres);
+  void adjust_corridor_half_width(float metres);
   void cancel();
   bool save();
   void clear_guidance();
@@ -49,10 +51,13 @@ public:
   double longitude() const { return longitude_; }
   double altitude_m() const { return altitude_m_; }
   float heading() const { return heading_; }
+  float acquisition_distance_m() const { return acquisition_distance_m_; }
+  float corridor_half_width_m() const { return corridor_half_width_m_; }
 
 private:
   enum class GizmoDrag { None, MoveX, MoveY, MoveZ, Rotate };
   static void draw_gizmo_callback(XPLMWindowID window, void* refcon);
+  static void draw_guide_callback(XPLMWindowID window, void* refcon);
   static int gizmo_mouse_callback(XPLMWindowID window, int x, int y,
                                   XPLMMouseStatus status, void* refcon);
   static XPLMCursorStatus gizmo_cursor_callback(XPLMWindowID window, int x,
@@ -60,8 +65,11 @@ private:
   void open_gizmo();
   void close_gizmo();
   void draw_gizmo();
+  void draw_detection_guides();
   int gizmo_mouse(int x, int y, XPLMMouseStatus status);
   bool project_object_to_screen(int& screen_x, int& screen_y) const;
+  bool project_point(float world_x, float world_y, float world_z,
+                     int& screen_x, int& screen_y) const;
   static float normalize_heading(float heading);
   float terrain_y(float x, float z, float fallback) const;
   void show_preview();
@@ -84,12 +92,15 @@ private:
   float z_{};
   float ground_y_{};
   float altitude_offset_m_{};
+  float acquisition_distance_m_{80.0f};
+  float corridor_half_width_m_{8.0f};
   XPLMObjectRef preview_object_{};
   XPLMInstanceRef preview_instance_{};
   XPLMProbeRef probe_{};
   XPLMDataRef world_matrix_ref_{};
   XPLMDataRef projection_matrix_ref_{};
   XPLMWindowID gizmo_window_{};
+  XPLMWindowID guide_window_{};
   GizmoDrag gizmo_drag_{GizmoDrag::None};
   int drag_last_x_{};
   int drag_last_y_{};
