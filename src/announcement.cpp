@@ -55,6 +55,7 @@ void AnnouncementManager::unload() {
     if (announcement.buffer) alDeleteBuffers(1, &announcement.buffer);
   }
   sources_.clear();
+  audio_zones_.clear();
 }
 
 void AnnouncementManager::shutdown_audio() {
@@ -169,6 +170,7 @@ bool AnnouncementManager::load(const std::string& xplane_root) {
   view_z_ref_ = XPLMFindDataRef("sim/graphics/view/view_z");
   view_heading_ref_ = XPLMFindDataRef("sim/graphics/view/view_heading");
   view_pitch_ref_ = XPLMFindDataRef("sim/graphics/view/view_pitch");
+  view_is_external_ref_ = XPLMFindDataRef("sim/graphics/view/view_is_external");
 
   const fs::path custom = fs::path(xplane_root) / "Custom Scenery";
   if (!fs::exists(custom)) return false;
@@ -178,6 +180,23 @@ bool AnnouncementManager::load(const std::string& xplane_root) {
       if (!entry.is_directory() || !fs::exists(config_path)) continue;
       std::ifstream config_file(config_path);
       const json root = json::parse(config_file);
+      if (root.contains("audio_zones") && root.at("audio_zones").is_array()) {
+        for (const auto& zone_item : root.at("audio_zones")) {
+          if (!zone_item.contains("latitude") || !zone_item.contains("longitude")) continue;
+          AudioZone zone;
+          zone.id = zone_item.value("id", std::string("audio_zone"));
+          zone.type = zone_item.value("type", std::string("terminal"));
+          zone.latitude = zone_item.at("latitude").get<double>();
+          zone.longitude = zone_item.at("longitude").get<double>();
+          zone.altitude_m = zone_item.value("altitude_m", 0.0);
+          zone.radius_m = std::clamp(zone_item.value("radius_m", 80.0f), 5.0f, 1000.0f);
+          zone.gain_multiplier = std::clamp(zone_item.value("gain_multiplier", 1.35f), 0.1f, 2.0f);
+          double zx{}, zy{}, zz{};
+          XPLMWorldToLocal(zone.latitude, zone.longitude, zone.altitude_m, &zx, &zy, &zz);
+          zone.x = static_cast<float>(zx); zone.y = static_cast<float>(zy); zone.z = static_cast<float>(zz);
+          audio_zones_.push_back(std::move(zone));
+        }
+      }
       auto configure_source = [&](AnnouncementSource& announcement,
                                   const json& item) {
         if (!item.contains("latitude") || !item.contains("longitude"))
@@ -311,7 +330,29 @@ void AnnouncementManager::update(float elapsed_seconds) {
   const float orientation[] = {0.0f, 0.0f, -1.0f, 0.0f, 1.0f, 0.0f};
   alListenerfv(AL_ORIENTATION, orientation);
 
+  listener_environment_ = ListenerEnvironment::Outside;
+  listener_gain_multiplier_ = 1.0f;
+  const bool external_view = view_is_external_ref_ && XPLMGetDatai(view_is_external_ref_) != 0;
+  if (!external_view) {
+    listener_environment_ = ListenerEnvironment::Cockpit;
+    listener_gain_multiplier_ = 0.35f;
+  } else {
+    for (const auto& zone : audio_zones_) {
+      if (zone.type != "terminal") continue;
+      const float dx = zone.x - camera_x;
+      const float dy = zone.y - camera_y;
+      const float dz = zone.z - camera_z;
+      if (std::sqrt(dx * dx + dy * dy + dz * dz) <= zone.radius_m) {
+        listener_environment_ = ListenerEnvironment::Terminal;
+        listener_gain_multiplier_ = zone.gain_multiplier;
+        break;
+      }
+    }
+  }
+
   for (auto& announcement : sources_) {
+    alSourcef(announcement.source, AL_GAIN,
+              std::clamp(announcement.gain * listener_gain_multiplier_, 0.0f, 2.0f));
     const std::array<float, 3> delta{announcement.x - camera_x,
                                      announcement.y - camera_y,
                                      announcement.z - camera_z};

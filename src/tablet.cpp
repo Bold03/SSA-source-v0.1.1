@@ -192,15 +192,26 @@ void Tablet::draw_impl() {
                   announcement_editor_.gain(),
                   announcement_editor_.radius_m());
     label(l + 22, t - 395, value, 0.55f, 0.85f, 0.75f);
-    button(l + 22, t - 383, l + 235, t - 418,
-           announcement_editor_.delete_confirmation_pending()
-               ? "CONFIRM DELETE"
-               : "DELETE NEAREST",
+    announcement_editor_.refresh_speakers();
+    const auto& saved_speakers = announcement_editor_.speakers();
+    label(l + 22, t - 420, "SAVED SPEAKERS - SELECT ONE BEFORE DELETE",
+          0.25f, 0.95f, 0.65f);
+    int speaker_y = t - 442;
+    for (size_t i = 0; i < std::min<size_t>(saved_speakers.size(), 4); ++i, speaker_y -= 26) {
+      char speaker_line[160];
+      std::snprintf(speaker_line, sizeof(speaker_line), "%s%zu. %.24s",
+                    announcement_editor_.selected_speaker() == static_cast<int>(i) ? "> " : "  ",
+                    i + 1, saved_speakers[i].label.c_str());
+      button(l + 22, speaker_y + 12, r - 22, speaker_y - 12, speaker_line,
+             announcement_editor_.selected_speaker() == static_cast<int>(i) ? 1.0f : 0.75f,
+             announcement_editor_.selected_speaker() == static_cast<int>(i) ? 0.72f : 0.85f,
+             announcement_editor_.selected_speaker() == static_cast<int>(i) ? 0.20f : 0.95f);
+    }
+    button(l + 22, b + 44, l + 235, b + 14,
+           announcement_editor_.delete_confirmation_pending() ? "CONFIRM DELETE SELECTED" : "DELETE SELECTED",
            1.0f, 0.30f, 0.25f);
-    button(l + 245, t - 383, r - 22, t - 418, "PLACE SPEAKER",
+    button(l + 245, b + 44, r - 22, b + 14, "PLACE SPEAKER",
            1.0f, 0.72f, 0.20f);
-    label(l + 22, b + 20, "Click airline name to AUTO-detect active livery",
-          0.55f, 0.85f, 0.75f);
     return;
   }
 
@@ -551,10 +562,19 @@ int Tablet::mouse_impl(int x, int y, XPLMMouseStatus status) {
       else if (x >= l + 137 && x <= l + 242) announcement_editor_.adjust_gain(0.1f);
       else if (x >= l + 252 && x <= l + 357) announcement_editor_.adjust_radius(-25.0f);
       else if (x >= l + 367 && x <= r - 22) announcement_editor_.adjust_radius(25.0f);
-    } else if (y <= t - 383 && y >= t - 418) {
+    } else if (y <= t - 430 && y >= t - 550) {
+      announcement_editor_.refresh_speakers();
+      const auto& saved_speakers = announcement_editor_.speakers();
+      int speaker_y = t - 442;
+      for (size_t i = 0; i < std::min<size_t>(saved_speakers.size(), 4); ++i, speaker_y -= 26) {
+        if (y <= speaker_y + 12 && y >= speaker_y - 12 && x >= l + 22 && x <= r - 22) {
+          announcement_editor_.select_speaker(i);
+          return 1;
+        }
+      }
+    } else if (y <= b + 44 && y >= b + 14) {
       if (x >= l + 22 && x <= l + 235) {
-        if (announcement_editor_.request_delete_nearest(latitude_, longitude_))
-          reload_config_();
+        if (announcement_editor_.delete_selected_speaker()) reload_config_();
       } else if (x >= l + 245 && x <= r - 22) {
         announcement_editor_.begin(latitude_, longitude_, heading_);
       }

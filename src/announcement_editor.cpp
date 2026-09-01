@@ -93,6 +93,8 @@ void AnnouncementEditor::unload() {
   events_.clear();
   livery_name_.clear();
   pending_delete_id_.clear();
+  speakers_.clear();
+  selected_speaker_ = -1;
   airline_auto_detected_ = false;
   state_ = AnnouncementEditorState::Unavailable;
 }
@@ -149,6 +151,7 @@ bool AnnouncementEditor::load(const std::string& xplane_root) {
       return false;
     }
     state_ = AnnouncementEditorState::Idle;
+    refresh_speakers();
     if (!detect_airline_from_livery())
       status_ = "Composer ready | airline can be selected manually";
     return true;
@@ -351,8 +354,88 @@ bool AnnouncementEditor::save() {
     close_overlay();
     state_ = AnnouncementEditorState::Idle;
     status_ = "Saved " + id + " to ssa.json";
+    refresh_speakers();
     return true;
   } catch (const std::exception& error) {
+    status_ = error.what();
+    return false;
+  }
+}
+
+bool AnnouncementEditor::refresh_speakers() {
+  speakers_.clear();
+  if (config_path_.empty()) { selected_speaker_ = -1; return false; }
+  try {
+    std::ifstream input(config_path_);
+    const json root = json::parse(input);
+    if (!root.contains("flight_announcements") ||
+        !root.at("flight_announcements").is_array()) {
+      selected_speaker_ = -1;
+      return true;
+    }
+    for (const auto& item : root.at("flight_announcements")) {
+      SavedSpeaker speaker;
+      speaker.id = item.value("id", std::string("speaker"));
+      speaker.label = item.value("label", speaker.id);
+      speaker.latitude = item.value("latitude", 0.0);
+      speaker.longitude = item.value("longitude", 0.0);
+      speaker.altitude_m = item.value("altitude_m", 0.0);
+      speaker.gain = item.value("gain", 1.0f);
+      speaker.radius_m = item.value("radius_m", 150.0f);
+      speakers_.push_back(std::move(speaker));
+    }
+    if (selected_speaker_ >= static_cast<int>(speakers_.size())) selected_speaker_ = -1;
+    return true;
+  } catch (const std::exception& error) {
+    status_ = error.what();
+    selected_speaker_ = -1;
+    return false;
+  }
+}
+
+void AnnouncementEditor::select_speaker(size_t index) {
+  refresh_speakers();
+  if (index >= speakers_.size()) { selected_speaker_ = -1; pending_delete_id_.clear(); return; }
+  selected_speaker_ = static_cast<int>(index);
+  pending_delete_id_.clear();
+  status_ = "Selected " + speakers_[index].label + " | press DELETE SELECTED to arm deletion";
+}
+
+void AnnouncementEditor::cancel_delete() {
+  pending_delete_id_.clear();
+  status_ = selected_speaker_ >= 0 ? "Delete cancelled; speaker remains selected" : "Delete cancelled";
+}
+
+bool AnnouncementEditor::delete_selected_speaker() {
+  if (!refresh_speakers() || selected_speaker_ < 0 ||
+      selected_speaker_ >= static_cast<int>(speakers_.size())) {
+    status_ = "Select a speaker from the list first";
+    return false;
+  }
+  const std::string id = speakers_[selected_speaker_].id;
+  if (pending_delete_id_ != id) {
+    pending_delete_id_ = id;
+    status_ = "DELETE " + id + "? Press DELETE SELECTED again to confirm";
+    return false;
+  }
+  try {
+    std::ifstream input(config_path_);
+    json root = json::parse(input);
+    auto& announcements = root["flight_announcements"];
+    json retained = json::array();
+    for (const auto& item : announcements)
+      if (item.value("id", std::string()) != id) retained.push_back(item);
+    root["flight_announcements"] = retained;
+    std::ofstream output(config_path_);
+    output << root.dump(2) << '\n';
+    if (!output) throw std::runtime_error("Cannot write ssa.json");
+    pending_delete_id_.clear();
+    selected_speaker_ = -1;
+    refresh_speakers();
+    status_ = "Deleted " + id + " from ssa.json";
+    return true;
+  } catch (const std::exception& error) {
+    pending_delete_id_.clear();
     status_ = error.what();
     return false;
   }

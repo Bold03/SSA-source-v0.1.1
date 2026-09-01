@@ -5,7 +5,9 @@
   "announcement_library": {
     "base_folder": "audio/announcements",
     "gap_ms": 100,
-    "airlines": { "lion_air": "airlines/lion_air_jt.wav" },
+    "airlines": {
+      "lion_air": "airlines/lion_air_jt.wav"
+    },
     "digits": {
       "0": "digits/nol.wav",
       "1": "digits/satu.wav",
@@ -18,8 +20,12 @@
       "8": "digits/delapan.wav",
       "9": "digits/sembilan.wav"
     },
-    "origins": { "jakarta": "origins/dari_jakarta.wav" },
-    "destinations": { "makassar": "destinations/tujuan_makassar.wav" },
+    "origins": {
+      "jakarta": "origins/dari_jakarta.wav"
+    },
+    "destinations": {
+      "makassar": "destinations/tujuan_makassar.wav"
+    },
     "events": {
       "landed": "events/telah_mendarat.wav",
       "boarding": "events/boarding_gate.wav"
@@ -76,7 +82,7 @@
       "acceleration_mps2": 1.5,
       "braking_mps2": 2.5,
       "collision_enabled": true,
-      "collision_refresh_s": 0.10,
+      "collision_refresh_s": 0.1,
       "collision_detection_m": 40.0,
       "collision_stop_distance_m": 13.0,
       "collision_lane_half_width_m": 3.5
@@ -108,7 +114,7 @@
       "label": "Gate A1 Jetway 1",
       "type": "jetway",
       "latitude": -6.2665,
-      "longitude": 106.8910,
+      "longitude": 106.891,
       "radius_m": 35,
       "speed": 0.12,
       "dataref": "boldstudio31/ssa/animation/example_wihh/jetway_01/state",
@@ -137,7 +143,7 @@
       "channels": {
         "rotunda": {
           "dataref": "boldstudio31/ssa/animation/example_wihh/jetway_01/rotunda_ratio",
-          "speed": 0.10
+          "speed": 0.1
         },
         "extension": {
           "dataref": "boldstudio31/ssa/animation/example_wihh/jetway_01/extension_ratio",
@@ -145,7 +151,7 @@
         },
         "height": {
           "dataref": "boldstudio31/ssa/animation/example_wihh/jetway_01/height_ratio",
-          "speed": 0.10
+          "speed": 0.1
         },
         "cabin_yaw": {
           "dataref": "boldstudio31/ssa/animation/example_wihh/jetway_01/cabin_yaw_ratio",
@@ -183,6 +189,17 @@
         "lateral_stop_tolerance_m": 0.35,
         "lateral_multiplier": -1.0
       }
+    }
+  ],
+  "audio_zones": [
+    {
+      "id": "terminal_example",
+      "type": "terminal",
+      "latitude": -6.2663,
+      "longitude": 106.8908,
+      "altitude_m": 4.0,
+      "radius_m": 100.0,
+      "gain_multiplier": 1.35
     }
   ]
 }

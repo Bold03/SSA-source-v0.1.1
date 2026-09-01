@@ -8,6 +8,21 @@
 
 namespace ssa {
 
+enum class ListenerEnvironment { Cockpit, Outside, Terminal };
+
+struct AudioZone {
+  std::string id;
+  std::string type;
+  double latitude{};
+  double longitude{};
+  double altitude_m{};
+  float x{};
+  float y{};
+  float z{};
+  float radius_m{80.0f};
+  float gain_multiplier{1.35f};
+};
+
 struct AnnouncementSource {
   std::string id;
   std::string label;
@@ -39,6 +54,8 @@ public:
   void update(float elapsed_seconds);
   const std::string& status() const { return status_; }
   size_t source_count() const { return sources_.size(); }
+  ListenerEnvironment listener_environment() const { return listener_environment_; }
+  float listener_gain_multiplier() const { return listener_gain_multiplier_; }
 
 private:
   bool initialize_audio();
@@ -52,7 +69,11 @@ private:
   XPLMDataRef view_z_ref_{};
   XPLMDataRef view_heading_ref_{};
   XPLMDataRef view_pitch_ref_{};
+  XPLMDataRef view_is_external_ref_{};
   std::vector<AnnouncementSource> sources_;
+  std::vector<AudioZone> audio_zones_;
+  ListenerEnvironment listener_environment_{ListenerEnvironment::Outside};
+  float listener_gain_multiplier_{1.0f};
   std::string status_{"3D announcements not loaded"};
 };
 

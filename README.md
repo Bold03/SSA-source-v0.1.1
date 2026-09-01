@@ -292,3 +292,26 @@ This is a beta, not yet a finished public plugin. Test it in a copy
 of a scenery first. Jetway movement limits must match the transforms authored
 in Blender. Additional aircraft profiles and licensed announcement recordings
 are still required.
+
+
+## SSA 0.25.0 work-in-progress changes
+
+- Speaker deletion is selection-based: the Announcement developer page lists saved speakers; deleting requires selecting a row and pressing Delete twice.
+- Environment-aware announcement gain: cockpit view is attenuated to 35%, external view uses normal gain, and optional `audio_zones` of type `terminal` can boost gain.
+- Example terminal zone:
+
+```json
+"audio_zones": [
+  {
+    "id": "terminal_a",
+    "type": "terminal",
+    "latitude": -0.1500,
+    "longitude": 109.4000,
+    "altitude_m": 0.0,
+    "radius_m": 100.0,
+    "gain_multiplier": 1.35
+  }
+]
+```
+
+The next implementation stage is SimBrief account/preferences + live flight-plan lookup, followed by unified developer keyboard shortcuts and checkpoint authoring for jetways/VDGS.

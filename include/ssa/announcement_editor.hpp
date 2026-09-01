@@ -5,10 +5,21 @@
 #include <XPLMScenery.h>
 #include <string>
 #include <vector>
+#include <cstddef>
 
 namespace ssa {
 
 enum class AnnouncementEditorState { Unavailable, Idle, Placing };
+
+struct SavedSpeaker {
+  std::string id;
+  std::string label;
+  double latitude{};
+  double longitude{};
+  double altitude_m{};
+  float gain{1.0f};
+  float radius_m{150.0f};
+};
 
 class AnnouncementEditor {
 public:
@@ -26,6 +37,12 @@ public:
   bool save();
   bool request_delete_nearest(double aircraft_latitude,
                               double aircraft_longitude);
+  bool refresh_speakers();
+  const std::vector<SavedSpeaker>& speakers() const { return speakers_; }
+  int selected_speaker() const { return selected_speaker_; }
+  void select_speaker(size_t index);
+  void cancel_delete();
+  bool delete_selected_speaker();
 
   void next_airline(int direction);
   void next_origin(int direction);
@@ -83,6 +100,8 @@ private:
   std::string status_{"Announcement library not found"};
   std::string livery_name_;
   std::string pending_delete_id_;
+  std::vector<SavedSpeaker> speakers_;
+  int selected_speaker_{-1};
   std::vector<std::string> airlines_;
   std::vector<std::string> origins_;
   std::vector<std::string> destinations_;
