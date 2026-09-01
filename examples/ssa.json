@@ -1,56 +1,6 @@
 {
   "schema": 1,
   "airport": "WIHH",
-  "announcements": [],
-  "announcement_library": {
-    "base_folder": "audio/announcements",
-    "gap_ms": 100,
-    "airlines": {
-      "lion_air": "airlines/lion_air_jt.wav"
-    },
-    "digits": {
-      "0": "digits/nol.wav",
-      "1": "digits/satu.wav",
-      "2": "digits/dua.wav",
-      "3": "digits/tiga.wav",
-      "4": "digits/empat.wav",
-      "5": "digits/lima.wav",
-      "6": "digits/enam.wav",
-      "7": "digits/tujuh.wav",
-      "8": "digits/delapan.wav",
-      "9": "digits/sembilan.wav"
-    },
-    "origins": {
-      "jakarta": "origins/dari_jakarta.wav"
-    },
-    "destinations": {
-      "makassar": "destinations/tujuan_makassar.wav"
-    },
-    "events": {
-      "landed": "events/telah_mendarat.wav",
-      "boarding": "events/boarding_gate.wav"
-    }
-  },
-  "flight_announcements": [
-    {
-      "id": "lion_jt684_boarding",
-      "label": "Lion Air JT684 boarding",
-      "airline": "lion_air",
-      "flight_number": "684",
-      "destination": "makassar",
-      "event": "boarding",
-      "gate": "2",
-      "latitude": -6.2662,
-      "longitude": 106.8906,
-      "altitude_m": 4.0,
-      "gain": 0.8,
-      "radius_m": 150.0,
-      "autoplay": true,
-      "loop": false,
-      "start_delay_s": 5.0,
-      "repeat_interval_s": 120.0
-    }
-  ],
   "vdgs_models": [
     {
       "id": "default_vdgs",
@@ -189,17 +139,6 @@
         "lateral_stop_tolerance_m": 0.35,
         "lateral_multiplier": -1.0
       }
-    }
-  ],
-  "audio_zones": [
-    {
-      "id": "terminal_example",
-      "type": "terminal",
-      "latitude": -6.2663,
-      "longitude": 106.8908,
-      "altitude_m": 4.0,
-      "radius_m": 100.0,
-      "gain_multiplier": 1.35
     }
   ]
 }

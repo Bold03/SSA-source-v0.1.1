@@ -1,11 +1,12 @@
-# SSA 0.26.0
+# SSA 0.27.0
 
-SSA now includes the Airbus-inspired tablet UI translated from the approved Figma mock-up into native X-Plane/XPLM drawing code.
+SSA includes the Airbus-inspired tablet UI translated into native X-Plane/XPLM drawing code.
+
+0.27.0 focuses the player UI on Hangar, Jetway and VDGS. The Announcement subsystem has been removed. The Developer tab is hidden until Developer Mode is explicitly enabled.
 
 # SSA — Scenery Service Animation
 
 **Developer:** BoldStudio31  
-**Status:** modular 3D airport announcements beta 0.24.1  
 **Targets:** X-Plane 11.50+ and X-Plane 12; Windows, Linux and macOS
 
 SSA is a standalone animation controller for scenery objects. It provides custom
@@ -17,27 +18,13 @@ developers. Open it in a browser, choose a scenery folder and OBJ, and copy the
 sanitized `boldstudio31/ssa/animation/scenery/object` dataref into both Blender
 and `ssa.json`.
 
-## Implemented through 0.24.1
+## Current highlights
 
-- Corrected nlohmann JSON object-key iteration for MSVC and expanded the local
-  validation stub to exercise the same API used by the production dependency.
-
-- Developer Mode now includes an ANN tab for configuring the airline, flight
-  number, event, origin/destination, gate, gain and audible radius without
-  editing JSON manually.
-- PLACE SPEAKER opens a perspective 3D placement overlay modelled after the
-  VDGS editor. Its high-visibility speaker marker stays attached to the audio
-  source while camera-projected Blender-style world X/Y/Z handles provide
-  direction-correct dragging. The marker disappears after saving to ssa.json.
-- The Announcement Composer reads the active X-Plane livery path only when the
-  editor opens or placement starts, then matches common airline names such as
-  Garuda, Citilink and Batik automatically. Click the airline value to rerun
-  detection, or use the arrow buttons to override it manually.
-- DELETE NEAREST finds the saved speaker closest to the user aircraft. The
-  first press displays its ID and distance; a second press confirms deletion
-  from ssa.json and reloads the scenery configuration.
-- Speaker placement projects four concentric ground rings up to the configured
-  audible radius, making terminal coverage visible before saving.
+- Hangar page uses a dark airport-style schematic map instead of a text list.
+- Nearby SSA hangars appear as selectable H1/H2/... map points.
+- Clicking a point opens/closes that exact hangar and shows OPENING / OPEN / CLOSING / CLOSED status at the lower-left.
+- Developer Mode is OFF by default and its navigation tab is completely hidden until enabled from Settings or the developer toggle command.
+- Announcement/audio functionality is no longer part of SSA.
 - VDGS placement uses red acquisition rings as the actual detection boundary,
   green centre/corridor guides for lateral correction and a yellow transverse
   parking line for the nose wheel. Aircraft outside the red radius cannot be
@@ -47,19 +34,6 @@ and `ssa.json`.
   and transforms the nose-wheel position into VDGS coordinates. Aircraft
   length remains a fallback for models that do not publish usable gear data.
 
-- The Announcement Composer joins reusable airline, digit, origin,
-  destination, event and gate WAV clips into a complete 3D flight
-  announcement.
-- Composed clips may use different sample rates. SSA resamples them, inserts a
-  configurable silence gap and builds one OpenAL buffer at scenery load time.
-- Legacy complete-file announcements remain compatible.
-
-- X-Plane 11-compatible spatial announcements use a bundled OpenAL Soft audio
-  engine instead of relying on the X-Plane 12-only XPLMSound API.
-- Mono PCM 16-bit WAV files can be attached to latitude, longitude and altitude
-  coordinates, with distance attenuation, gain, radius, start delay, looping,
-  and repeat interval settings.
-- Announcement panning follows the active X-Plane camera heading and pitch.
 
 - The former `BUS` tablet tab is now `VEHICLES` because background traffic can
   include apron buses, fuel trucks, service cars and other airport vehicles.
@@ -294,28 +268,6 @@ Open the tablet from **Plugins → SSA → Open tablet**. The command is
 
 This is a beta, not yet a finished public plugin. Test it in a copy
 of a scenery first. Jetway movement limits must match the transforms authored
-in Blender. Additional aircraft profiles and licensed announcement recordings
 are still required.
 
 
-## SSA 0.25.0 work-in-progress changes
-
-- Speaker deletion is selection-based: the Announcement developer page lists saved speakers; deleting requires selecting a row and pressing Delete twice.
-- Environment-aware announcement gain: cockpit view is attenuated to 35%, external view uses normal gain, and optional `audio_zones` of type `terminal` can boost gain.
-- Example terminal zone:
-
-```json
-"audio_zones": [
-  {
-    "id": "terminal_a",
-    "type": "terminal",
-    "latitude": -0.1500,
-    "longitude": 109.4000,
-    "altitude_m": 0.0,
-    "radius_m": 100.0,
-    "gain_multiplier": 1.35
-  }
-]
-```
-
-The next implementation stage is SimBrief account/preferences + live flight-plan lookup, followed by unified developer keyboard shortcuts and checkpoint authoring for jetways/VDGS.
