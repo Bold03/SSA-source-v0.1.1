@@ -1,3 +1,7 @@
+# SSA 0.26.0
+
+SSA now includes the Airbus-inspired tablet UI translated from the approved Figma mock-up into native X-Plane/XPLM drawing code.
+
 # SSA — Scenery Service Animation
 
 **Developer:** BoldStudio31  

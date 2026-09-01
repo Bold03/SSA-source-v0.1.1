@@ -56,7 +56,7 @@ private:
   bool developer_mode_{};
   bool vehicle_spinning_{};
   float vehicle_steering_{};
-  int tab_{};
+  int tab_{7};
 };
 
 } // namespace ssa

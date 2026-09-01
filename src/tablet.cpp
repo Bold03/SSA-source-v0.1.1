@@ -15,6 +15,22 @@ void button(int left, int top, int right, int bottom, const char* text,
   XPLMDrawTranslucentDarkBox(left, top, right, bottom);
   label(left + 10, bottom + 10, text, red, green, blue);
 }
+
+void panel(int left, int top, int right, int bottom) {
+  XPLMDrawTranslucentDarkBox(left, top, right, bottom);
+}
+
+void nav_button(int left, int top, int right, int bottom, const char* text, bool active) {
+  panel(left, top, right, bottom);
+  label(left + 12, bottom + 15, text, active ? 0.25f : 0.62f,
+        active ? 0.95f : 0.72f, active ? 0.95f : 0.82f);
+}
+
+void status_chip(int left, int top, int right, int bottom, const char* text,
+                 float red, float green, float blue) {
+  panel(left, top, right, bottom);
+  label(left + 10, bottom + 8, text, red, green, blue);
+}
 }
 
 Tablet::Tablet(SceneryManager& scenery, RouteEditor& route_editor,
@@ -34,7 +50,7 @@ Tablet::Tablet(SceneryManager& scenery, RouteEditor& route_editor,
       set_vehicle_steering_(std::move(set_vehicle_steering)) {
   XPLMCreateWindow_t params{};
   params.structSize = sizeof(params);
-  params.left = 100; params.top = 700; params.right = 620; params.bottom = 220;
+  params.left = 80; params.top = 820; params.right = 1104; params.bottom = 100;
   params.visible = 0;
   params.drawWindowFunc = draw;
   params.handleMouseClickFunc = mouse;
@@ -73,23 +89,77 @@ int Tablet::mouse(XPLMWindowID, int x, int y, XPLMMouseStatus status, void* refc
 void Tablet::draw_impl() {
   int l, t, r, b;
   XPLMGetWindowGeometry(window_, &l, &t, &r, &b);
-  label(l + 22, t - 35, "BOLDSTUDIO31  |  SSA", 0.25f, 0.95f, 0.65f);
-  const char* tabs = developer_mode_
-      ? "[HGR] JET VDGS ANN SET DEV VEH"
-      : "[ HANGAR ]   JETWAY   VDGS   SETTINGS";
-  if (tab_ == 1) tabs = developer_mode_
-      ? "HGR [JET] VDGS ANN SET DEV VEH"
-      : "HANGAR   [ JETWAY ]   VDGS   SETTINGS";
-  else if (tab_ == 5) tabs = developer_mode_
-      ? "HGR JET [VDGS] ANN SET DEV VEH"
-      : "HANGAR   JETWAY   [ VDGS ]   SETTINGS";
-  else if (tab_ == 6) tabs = "HGR JET VDGS [ANN] SET DEV VEH";
-  else if (tab_ == 2) tabs = "HGR JET VDGS ANN SET DEV [VEH]";
-  else if (tab_ == 3) tabs = developer_mode_
-      ? "HGR JET VDGS ANN [SET] DEV VEH"
-      : "HANGAR   JETWAY   VDGS   [ SETTINGS ]";
-  else if (tab_ == 4) tabs = "HGR JET VDGS ANN SET [DEV] VEH";
-  label(l + 22, t - 70, tabs);
+
+  // Airbus-inspired tablet shell translated from the SSA Figma mock-up.
+  panel(l + 8, t - 8, r - 8, b + 8);
+  panel(l + 28, t - 28, r - 28, b + 28);
+  label(l + 52, t - 55, "SSA GROUND SERVICES", 0.25f, 0.95f, 0.95f);
+  label(l + 52, t - 78, "AIRCRAFT SERVICE & ANNOUNCEMENT TABLET", 0.62f, 0.74f, 0.84f);
+  status_chip(r - 210, t - 66, r - 52, t - 94, "X-PLANE CONNECTED", 0.35f, 1.0f, 0.65f);
+
+  // Bottom tablet navigation shared by every screen.
+  const int nav_top = b + 82;
+  const int nav_bottom = b + 38;
+  const int nav_left = l + 52;
+  const int nav_gap = 8;
+  const int nav_w = 116;
+  nav_button(nav_left + (nav_w + nav_gap) * 0, nav_top, nav_left + (nav_w + nav_gap) * 0 + nav_w, nav_bottom, "HOME", tab_ == 7);
+  nav_button(nav_left + (nav_w + nav_gap) * 1, nav_top, nav_left + (nav_w + nav_gap) * 1 + nav_w, nav_bottom, "HANGAR", tab_ == 0);
+  nav_button(nav_left + (nav_w + nav_gap) * 2, nav_top, nav_left + (nav_w + nav_gap) * 2 + nav_w, nav_bottom, "JETWAY", tab_ == 1);
+  nav_button(nav_left + (nav_w + nav_gap) * 3, nav_top, nav_left + (nav_w + nav_gap) * 3 + nav_w, nav_bottom, "VDGS", tab_ == 5);
+  nav_button(nav_left + (nav_w + nav_gap) * 4, nav_top, nav_left + (nav_w + nav_gap) * 4 + nav_w, nav_bottom, "ANNOUNCE", tab_ == 6);
+  nav_button(nav_left + (nav_w + nav_gap) * 5, nav_top, nav_left + (nav_w + nav_gap) * 5 + nav_w, nav_bottom, "SETTINGS", tab_ == 3);
+  nav_button(nav_left + (nav_w + nav_gap) * 6, nav_top, nav_left + (nav_w + nav_gap) * 6 + nav_w, nav_bottom, "DEVELOPER", tab_ == 4);
+
+  if (tab_ == 7) {
+    label(l + 52, t - 126, "ACTIVE FLIGHT", 0.62f, 0.74f, 0.84f);
+    panel(l + 52, t - 142, r - 52, t - 250);
+    label(l + 76, t - 176, "WADD   >   WIII", 0.92f, 0.96f, 1.0f);
+    label(l + 76, t - 204, "Gate A12  |  Boarding  |  SSA services online", 0.55f, 0.85f, 0.75f);
+    status_chip(r - 260, t - 176, r - 76, t - 208, "LISTENER: COCKPIT", 1.0f, 0.72f, 0.20f);
+
+    label(l + 52, t - 282, "SERVICES", 0.62f, 0.74f, 0.84f);
+    const int cy1 = t - 304, cy2 = t - 438;
+    const int cw = 214, gap = 16;
+    int cx = l + 52;
+    panel(cx, cy1, cx + cw, cy2);
+    label(cx + 18, cy1 - 34, "SPK  SPEAKERS", 0.25f, 0.95f, 0.95f);
+    label(cx + 18, cy1 - 66, "Place, edit and remove", 0.80f, 0.88f, 0.95f);
+    label(cx + 18, cy1 - 88, "3D airport speakers.", 0.80f, 0.88f, 0.95f);
+    status_chip(cx + 18, cy2 + 18, cx + 118, cy2 + 46, "ACTIVE", 0.35f, 1.0f, 0.65f);
+
+    cx += cw + gap;
+    panel(cx, cy1, cx + cw, cy2);
+    label(cx + 18, cy1 - 34, "ANN  ANNOUNCEMENTS", 0.25f, 0.95f, 0.95f);
+    label(cx + 18, cy1 - 66, "Boarding and arrival", 0.80f, 0.88f, 0.95f);
+    label(cx + 18, cy1 - 88, "audio automation.", 0.80f, 0.88f, 0.95f);
+    status_chip(cx + 18, cy2 + 18, cx + 118, cy2 + 46, "READY", 0.35f, 1.0f, 0.65f);
+
+    cx += cw + gap;
+    panel(cx, cy1, cx + cw, cy2);
+    label(cx + 18, cy1 - 34, "HGR  HANGAR", 0.25f, 0.95f, 0.95f);
+    label(cx + 18, cy1 - 66, "Scenery doors and", 0.80f, 0.88f, 0.95f);
+    label(cx + 18, cy1 - 88, "configured datarefs.", 0.80f, 0.88f, 0.95f);
+    status_chip(cx + 18, cy2 + 18, cx + 118, cy2 + 46, "ONLINE", 0.35f, 1.0f, 0.65f);
+
+    cx += cw + gap;
+    panel(cx, cy1, cx + cw, cy2);
+    label(cx + 18, cy1 - 34, "DEV  DEVELOPER", 0.25f, 0.95f, 0.95f);
+    label(cx + 18, cy1 - 66, "Routes, VDGS, jetway", 0.80f, 0.88f, 0.95f);
+    label(cx + 18, cy1 - 88, "and diagnostics.", 0.80f, 0.88f, 0.95f);
+    status_chip(cx + 18, cy2 + 18, cx + 118, cy2 + 46, developer_mode_ ? "LIVE" : "LOCKED",
+                developer_mode_ ? 0.35f : 1.0f, developer_mode_ ? 1.0f : 0.72f, developer_mode_ ? 0.65f : 0.20f);
+
+    panel(l + 52, t - 468, r - 52, t - 524);
+    label(l + 72, t - 494, "AUTO ENVIRONMENT AUDIO", 0.25f, 0.95f, 0.95f);
+    label(l + 310, t - 494, "Cockpit quieter  |  Outside clear  |  Terminal louder", 0.78f, 0.88f, 0.95f);
+    return;
+  }
+
+  label(l + 52, t - 112, developer_mode_ ? "DEVELOPER MODE" : "SSA CONTROL",
+        developer_mode_ ? 1.0f : 0.25f, developer_mode_ ? 0.72f : 0.95f,
+        developer_mode_ ? 0.20f : 0.95f);
+
 
   if (tab_ == 3) {
     label(l + 22, t - 105, "SETTINGS", 0.25f, 0.95f, 0.65f);
@@ -109,7 +179,7 @@ void Tablet::draw_impl() {
     return;
   }
 
-  if (tab_ == 6 && developer_mode_) {
+  if (tab_ == 6) {
     if (announcement_editor_.state() == AnnouncementEditorState::Placing) {
       label(l + 22, t - 105, "ANNOUNCEMENT  |  3D SPEAKER PLACEMENT",
             0.25f, 0.95f, 0.65f);
@@ -485,7 +555,23 @@ int Tablet::mouse_impl(int x, int y, XPLMMouseStatus status) {
     reload_config_();
     return 1;
   }
-  if (y < t - 45 && y > t - 85) {
+  const int nav_top = b + 82;
+  const int nav_bottom = b + 38;
+  const int nav_left = l + 52;
+  const int nav_gap = 8;
+  const int nav_w = 116;
+  if (y <= nav_top && y >= nav_bottom) {
+    for (int i = 0; i < 7; ++i) {
+      const int left = nav_left + (nav_w + nav_gap) * i;
+      if (x >= left && x <= left + nav_w) {
+        static const int tabs[7] = {7, 0, 1, 5, 6, 3, 4};
+        if (tabs[i] == 4 && !developer_mode_) toggle_developer_mode();
+        tab_ = tabs[i];
+        return 1;
+      }
+    }
+  }
+  if (false && y < t - 45 && y > t - 85) {
     if (developer_mode_) {
       if (x < l + 60) tab_ = 0;
       else if (x < l + 110) tab_ = 1;
@@ -508,7 +594,7 @@ int Tablet::mouse_impl(int x, int y, XPLMMouseStatus status) {
     else if (y < t - 235 && y > t - 285) reload_config_();
     return 1;
   }
-  if (tab_ == 6 && developer_mode_) {
+  if (tab_ == 6) {
     if (announcement_editor_.state() == AnnouncementEditorState::Placing) {
       const bool column_left = x >= l + 22 && x <= l + 152;
       const bool column_middle = x >= l + 172 && x <= l + 342;
