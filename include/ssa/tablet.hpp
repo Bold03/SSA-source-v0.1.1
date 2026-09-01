@@ -3,6 +3,7 @@
 #include "ssa/scenery.hpp"
 #include "ssa/route_editor.hpp"
 #include "ssa/vdgs_editor.hpp"
+#include "ssa/announcement_editor.hpp"
 #include <XPLMDisplay.h>
 #include <functional>
 
@@ -11,6 +12,7 @@ namespace ssa {
 class Tablet {
 public:
   Tablet(SceneryManager& scenery, RouteEditor& route_editor, VdgsEditor& vdgs_editor,
+         AnnouncementEditor& announcement_editor,
          std::function<void()> toggle_auto,
          std::function<void()> reload_config,
          std::function<void(ServiceObject&)> toggle_object,
@@ -39,6 +41,7 @@ private:
   SceneryManager& scenery_;
   RouteEditor& route_editor_;
   VdgsEditor& vdgs_editor_;
+  AnnouncementEditor& announcement_editor_;
   std::function<void()> toggle_auto_;
   std::function<void()> reload_config_;
   std::function<void(ServiceObject&)> toggle_object_;
@@ -53,7 +56,6 @@ private:
   bool developer_mode_{};
   bool vehicle_spinning_{};
   float vehicle_steering_{};
-  std::string selected_hangar_id_;
   int tab_{7};
 };
 

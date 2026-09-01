@@ -296,10 +296,13 @@ wheel-rotation datarefs.
   the parking stand's available jetways.
 - Default activation radius: 35 m.
 
+## 3D announcements
 
+Place announcement audio in the scenery package as a mono PCM 16-bit WAV file.
 Stereo files are rejected because a spatial source must have one position.
 
 ```json
+"announcements": [
   {
     "id": "terminal_pa_01",
     "label": "Terminal Public Address 01",
@@ -317,13 +320,17 @@ Stereo files are rejected because a spatial source must have one position.
 ]
 ```
 
+### Modular flight Announcement Composer
 
+SSA can assemble one announcement from small reusable WAV clips. Clips are
 joined in this order: airline introduction, each flight-number digit, optional
 origin, optional destination, event phrase, and each optional gate digit.
 
 Add a reusable library and flight job to the scenery's `ssa.json`:
 
 ```json
+"announcement_library": {
+  "base_folder": "audio/announcements",
   "gap_ms": 100,
   "airlines": { "lion_air": "airlines/lion_air_jt.wav" },
   "digits": {
@@ -340,6 +347,7 @@ Add a reusable library and flight job to the scenery's `ssa.json`:
     "boarding": "events/dipersilakan_naik_melalui_pintu.wav"
   }
 },
+"flight_announcements": [
   {
     "id": "lion_jt684_boarding",
     "airline": "lion_air",
@@ -363,15 +371,20 @@ the silence between clips and may be overridden for one flight job.
 
 For an arrival from Jakarta, omit `destination` and `gate`, then set
 `"origin": "jakarta"` and `"event": "landed"`. A missing key or audio
+file rejects only that composed job; legacy full-file announcements still load.
 
+### Place a composed announcement in X-Plane
 
 Compile and install SSA, open Settings, enable Developer Mode and select the
 `ANN` tab. Choose the airline and event with PREV/NEXT, set the numeric flight
 number and gate, then choose the origin or destination shown for that event.
 GAIN changes source loudness and RADIUS changes its maximum audible distance.
 
+Press `PLACE SPEAKER`. A green volume symbol appears 20 metres ahead of the
 aircraft with draggable X, Y and Z world-axis handles. It is an editor overlay,
 not a scenery OBJ. Use the tablet buttons for precise one-metre horizontal and
+0.1-metre altitude adjustments. `SAVE SPEAKER` appends the completed job and
+coordinates to `flight_announcements` in `ssa.json`, reloads the scenery
 configuration and removes the volume symbol. `CANCEL` changes nothing.
 
 - `radius_m`: maximum audible distance from the active camera.
@@ -379,6 +392,7 @@ configuration and removes the volume symbol. `CANCEL` changes nothing.
 - `start_delay_s`: delay after entering the radius before the first playback.
 - `repeat_interval_s`: silence after a WAV finishes before it plays again.
 - `loop`: continuous playback; use it for ambience, not ordinary PA messages.
+- Multiple speaker points may use the same WAV file.
 
 Version 0.7.3 includes an initial default-B738 profile and several common
 narrow-body profiles. Aircraft without a profile use a conservative fallback;

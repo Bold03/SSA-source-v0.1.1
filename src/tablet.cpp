@@ -3,8 +3,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
-#include <string>
-#include <vector>
 
 namespace ssa {
 namespace {
@@ -33,47 +31,10 @@ void status_chip(int left, int top, int right, int bottom, const char* text,
   panel(left, top, right, bottom);
   label(left + 10, bottom + 8, text, red, green, blue);
 }
-
-struct MapPoint { int x{}; int y{}; };
-
-void local_meters(double center_lat, double center_lon, double lat, double lon,
-                  double& east_m, double& north_m) {
-  constexpr double kMetersPerDegree = 111320.0;
-  constexpr double kPi = 3.14159265358979323846;
-  const double cos_lat = std::cos(center_lat * kPi / 180.0);
-  east_m = (lon - center_lon) * kMetersPerDegree * cos_lat;
-  north_m = (lat - center_lat) * kMetersPerDegree;
-}
-
-float map_pixels_per_meter(const std::vector<ServiceObject*>& objects,
-                           double center_lat, double center_lon,
-                           int width, int height) {
-  double max_east = 120.0;
-  double max_north = 120.0;
-  for (const auto* object : objects) {
-    double east{}, north{};
-    local_meters(center_lat, center_lon, object->latitude, object->longitude, east, north);
-    max_east = std::max(max_east, std::abs(east));
-    max_north = std::max(max_north, std::abs(north));
-  }
-  const double sx = (width * 0.43) / max_east;
-  const double sy = (height * 0.43) / max_north;
-  return static_cast<float>(std::max(0.03, std::min(sx, sy)));
-}
-
-MapPoint map_point(double center_lat, double center_lon, double lat, double lon,
-                   int left, int top, int right, int bottom, float pixels_per_meter) {
-  double east{}, north{};
-  local_meters(center_lat, center_lon, lat, lon, east, north);
-  const int cx = (left + right) / 2;
-  const int cy = (top + bottom) / 2;
-  return {cx + static_cast<int>(east * pixels_per_meter),
-          cy + static_cast<int>(north * pixels_per_meter)};
-}
 }
 
 Tablet::Tablet(SceneryManager& scenery, RouteEditor& route_editor,
-               VdgsEditor& vdgs_editor,
+               VdgsEditor& vdgs_editor, AnnouncementEditor& announcement_editor,
                std::function<void()> toggle_auto,
                std::function<void()> reload_config,
                std::function<void(ServiceObject&)> toggle_object,
@@ -81,6 +42,7 @@ Tablet::Tablet(SceneryManager& scenery, RouteEditor& route_editor,
                std::function<void()> toggle_vehicle_spin,
                std::function<void(float)> set_vehicle_steering)
     : scenery_(scenery), route_editor_(route_editor), vdgs_editor_(vdgs_editor),
+      announcement_editor_(announcement_editor),
       toggle_auto_(std::move(toggle_auto)),
       reload_config_(std::move(reload_config)), toggle_object_(std::move(toggle_object)),
       select_vdgs_(std::move(select_vdgs)),
@@ -106,7 +68,10 @@ void Tablet::toggle_developer_mode() {
   developer_mode_ = !developer_mode_;
   if (!developer_mode_ && vdgs_editor_.state() == VdgsEditorState::Placing)
     vdgs_editor_.cancel();
-  if (!developer_mode_ && (tab_ == 4 || tab_ == 2)) tab_ = 3;
+  if (!developer_mode_ &&
+      announcement_editor_.state() == AnnouncementEditorState::Placing)
+    announcement_editor_.cancel();
+  if (!developer_mode_ && (tab_ == 4 || tab_ == 2 || tab_ == 6)) tab_ = 3;
   XPLMSetWindowTitle(window_, developer_mode_
                                  ? "SSA - Scenery Service Animation [DEVELOPER]"
                                  : "SSA - Scenery Service Animation");
@@ -129,81 +94,65 @@ void Tablet::draw_impl() {
   panel(l + 8, t - 8, r - 8, b + 8);
   panel(l + 28, t - 28, r - 28, b + 28);
   label(l + 52, t - 55, "SSA GROUND SERVICES", 0.25f, 0.95f, 0.95f);
-  label(l + 52, t - 78, "AIRCRAFT SCENERY SERVICE TABLET", 0.62f, 0.74f, 0.84f);
+  label(l + 52, t - 78, "AIRCRAFT SERVICE & ANNOUNCEMENT TABLET", 0.62f, 0.74f, 0.84f);
   status_chip(r - 210, t - 66, r - 52, t - 94, "X-PLANE CONNECTED", 0.35f, 1.0f, 0.65f);
 
-  // Bottom tablet navigation. Developer is intentionally hidden until
-  // Developer Mode is explicitly enabled from Settings or the SSA command.
+  // Bottom tablet navigation shared by every screen.
   const int nav_top = b + 82;
   const int nav_bottom = b + 38;
   const int nav_left = l + 52;
   const int nav_gap = 8;
-  const int nav_w = developer_mode_ ? 134 : 162;
-  static const char* kBaseLabels[5] = {"HOME", "HANGAR", "JETWAY", "VDGS", "SETTINGS"};
-  static const int kBaseTabs[5] = {7, 0, 1, 5, 3};
-  for (int i = 0; i < 5; ++i) {
-    const int left = nav_left + (nav_w + nav_gap) * i;
-    nav_button(left, nav_top, left + nav_w, nav_bottom, kBaseLabels[i], tab_ == kBaseTabs[i]);
-  }
-  if (developer_mode_) {
-    const int left = nav_left + (nav_w + nav_gap) * 5;
-    nav_button(left, nav_top, left + nav_w, nav_bottom, "DEVELOPER", tab_ == 4);
-  }
+  const int nav_w = 116;
+  nav_button(nav_left + (nav_w + nav_gap) * 0, nav_top, nav_left + (nav_w + nav_gap) * 0 + nav_w, nav_bottom, "HOME", tab_ == 7);
+  nav_button(nav_left + (nav_w + nav_gap) * 1, nav_top, nav_left + (nav_w + nav_gap) * 1 + nav_w, nav_bottom, "HANGAR", tab_ == 0);
+  nav_button(nav_left + (nav_w + nav_gap) * 2, nav_top, nav_left + (nav_w + nav_gap) * 2 + nav_w, nav_bottom, "JETWAY", tab_ == 1);
+  nav_button(nav_left + (nav_w + nav_gap) * 3, nav_top, nav_left + (nav_w + nav_gap) * 3 + nav_w, nav_bottom, "VDGS", tab_ == 5);
+  nav_button(nav_left + (nav_w + nav_gap) * 4, nav_top, nav_left + (nav_w + nav_gap) * 4 + nav_w, nav_bottom, "ANNOUNCE", tab_ == 6);
+  nav_button(nav_left + (nav_w + nav_gap) * 5, nav_top, nav_left + (nav_w + nav_gap) * 5 + nav_w, nav_bottom, "SETTINGS", tab_ == 3);
+  nav_button(nav_left + (nav_w + nav_gap) * 6, nav_top, nav_left + (nav_w + nav_gap) * 6 + nav_w, nav_bottom, "DEVELOPER", tab_ == 4);
 
   if (tab_ == 7) {
-    label(l + 52, t - 126, "LIVE SCENERY", 0.62f, 0.74f, 0.84f);
-    panel(l + 52, t - 142, r - 52, t - 232);
-    label(l + 76, t - 176, "SSA AIRPORT SERVICES ONLINE", 0.92f, 0.96f, 1.0f);
-    char nearby_line[128];
-    const auto nearby_hangars = scenery_.nearby(ServiceType::Hangar, latitude_, longitude_, 2000.0);
-    const auto nearby_jetways = scenery_.nearby(ServiceType::Jetway, latitude_, longitude_, 1000.0);
-    const auto nearby_vdgs = scenery_.nearby(ServiceType::ParkingDisplay, latitude_, longitude_, 2000.0);
-    std::snprintf(nearby_line, sizeof(nearby_line), "%zu hangar  |  %zu jetway  |  %zu VDGS nearby",
-                  nearby_hangars.size(), nearby_jetways.size(), nearby_vdgs.size());
-    label(l + 76, t - 204, nearby_line, 0.55f, 0.85f, 0.75f);
+    label(l + 52, t - 126, "ACTIVE FLIGHT", 0.62f, 0.74f, 0.84f);
+    panel(l + 52, t - 142, r - 52, t - 250);
+    label(l + 76, t - 176, "WADD   >   WIII", 0.92f, 0.96f, 1.0f);
+    label(l + 76, t - 204, "Gate A12  |  Boarding  |  SSA services online", 0.55f, 0.85f, 0.75f);
+    status_chip(r - 260, t - 176, r - 76, t - 208, "LISTENER: COCKPIT", 1.0f, 0.72f, 0.20f);
 
-    label(l + 52, t - 266, "SERVICES", 0.62f, 0.74f, 0.84f);
-    const int card_top = t - 288;
-    const int card_bottom = t - 440;
-    const int card_gap = 16;
-    const int card_count = developer_mode_ ? 4 : 3;
-    const int available = (r - l) - 104 - card_gap * (card_count - 1);
-    const int card_w = available / card_count;
+    label(l + 52, t - 282, "SERVICES", 0.62f, 0.74f, 0.84f);
+    const int cy1 = t - 304, cy2 = t - 438;
+    const int cw = 214, gap = 16;
     int cx = l + 52;
+    panel(cx, cy1, cx + cw, cy2);
+    label(cx + 18, cy1 - 34, "SPK  SPEAKERS", 0.25f, 0.95f, 0.95f);
+    label(cx + 18, cy1 - 66, "Place, edit and remove", 0.80f, 0.88f, 0.95f);
+    label(cx + 18, cy1 - 88, "3D airport speakers.", 0.80f, 0.88f, 0.95f);
+    status_chip(cx + 18, cy2 + 18, cx + 118, cy2 + 46, "ACTIVE", 0.35f, 1.0f, 0.65f);
 
-    panel(cx, card_top, cx + card_w, card_bottom);
-    label(cx + 18, card_top - 34, "HGR  HANGAR MAP", 0.25f, 0.95f, 0.95f);
-    label(cx + 18, card_top - 68, "Tap hangar points", 0.80f, 0.88f, 0.95f);
-    label(cx + 18, card_top - 90, "to open or close.", 0.80f, 0.88f, 0.95f);
-    status_chip(cx + 18, card_bottom + 18, cx + 118, card_bottom + 46, "ONLINE", 0.35f, 1.0f, 0.65f);
+    cx += cw + gap;
+    panel(cx, cy1, cx + cw, cy2);
+    label(cx + 18, cy1 - 34, "ANN  ANNOUNCEMENTS", 0.25f, 0.95f, 0.95f);
+    label(cx + 18, cy1 - 66, "Boarding and arrival", 0.80f, 0.88f, 0.95f);
+    label(cx + 18, cy1 - 88, "audio automation.", 0.80f, 0.88f, 0.95f);
+    status_chip(cx + 18, cy2 + 18, cx + 118, cy2 + 46, "READY", 0.35f, 1.0f, 0.65f);
 
-    cx += card_w + card_gap;
-    panel(cx, card_top, cx + card_w, card_bottom);
-    label(cx + 18, card_top - 34, "JTW  JETWAY", 0.25f, 0.95f, 0.95f);
-    label(cx + 18, card_top - 68, "Automatic docking", 0.80f, 0.88f, 0.95f);
-    label(cx + 18, card_top - 90, "and parking.", 0.80f, 0.88f, 0.95f);
-    status_chip(cx + 18, card_bottom + 18, cx + 118, card_bottom + 46,
-                automatic_ ? "AUTO" : "MANUAL", 0.35f, 1.0f, 0.65f);
+    cx += cw + gap;
+    panel(cx, cy1, cx + cw, cy2);
+    label(cx + 18, cy1 - 34, "HGR  HANGAR", 0.25f, 0.95f, 0.95f);
+    label(cx + 18, cy1 - 66, "Scenery doors and", 0.80f, 0.88f, 0.95f);
+    label(cx + 18, cy1 - 88, "configured datarefs.", 0.80f, 0.88f, 0.95f);
+    status_chip(cx + 18, cy2 + 18, cx + 118, cy2 + 46, "ONLINE", 0.35f, 1.0f, 0.65f);
 
-    cx += card_w + card_gap;
-    panel(cx, card_top, cx + card_w, card_bottom);
-    label(cx + 18, card_top - 34, "VDG  VDGS", 0.25f, 0.95f, 0.95f);
-    label(cx + 18, card_top - 68, "Docking guidance", 0.80f, 0.88f, 0.95f);
-    label(cx + 18, card_top - 90, "and stop control.", 0.80f, 0.88f, 0.95f);
-    status_chip(cx + 18, card_bottom + 18, cx + 118, card_bottom + 46, "READY", 0.35f, 1.0f, 0.65f);
+    cx += cw + gap;
+    panel(cx, cy1, cx + cw, cy2);
+    label(cx + 18, cy1 - 34, "DEV  DEVELOPER", 0.25f, 0.95f, 0.95f);
+    label(cx + 18, cy1 - 66, "Routes, VDGS, jetway", 0.80f, 0.88f, 0.95f);
+    label(cx + 18, cy1 - 88, "and diagnostics.", 0.80f, 0.88f, 0.95f);
+    status_chip(cx + 18, cy2 + 18, cx + 118, cy2 + 46, developer_mode_ ? "LIVE" : "LOCKED",
+                developer_mode_ ? 0.35f : 1.0f, developer_mode_ ? 1.0f : 0.72f, developer_mode_ ? 0.65f : 0.20f);
 
-    if (developer_mode_) {
-      cx += card_w + card_gap;
-      panel(cx, card_top, cx + card_w, card_bottom);
-      label(cx + 18, card_top - 34, "DEV  DEVELOPER", 1.0f, 0.72f, 0.20f);
-      label(cx + 18, card_top - 68, "Routes, checkpoints", 0.80f, 0.88f, 0.95f);
-      label(cx + 18, card_top - 90, "and diagnostics.", 0.80f, 0.88f, 0.95f);
-      status_chip(cx + 18, card_bottom + 18, cx + 118, card_bottom + 46, "LIVE", 1.0f, 0.72f, 0.20f);
-    }
-
-    panel(l + 52, t - 472, r - 52, t - 528);
-    label(l + 72, t - 498, "SSA SERVICE CORE", 0.25f, 0.95f, 0.95f);
-    label(l + 260, t - 498, "Hangar  |  Jetway  |  VDGS  |  Ground traffic", 0.78f, 0.88f, 0.95f);
+    panel(l + 52, t - 468, r - 52, t - 524);
+    label(l + 72, t - 494, "AUTO ENVIRONMENT AUDIO", 0.25f, 0.95f, 0.95f);
+    label(l + 310, t - 494, "Cockpit quieter  |  Outside clear  |  Terminal louder", 0.78f, 0.88f, 0.95f);
     return;
   }
 
@@ -230,6 +179,111 @@ void Tablet::draw_impl() {
     return;
   }
 
+  if (tab_ == 6) {
+    if (announcement_editor_.state() == AnnouncementEditorState::Placing) {
+      label(l + 22, t - 105, "ANNOUNCEMENT  |  3D SPEAKER PLACEMENT",
+            0.25f, 0.95f, 0.65f);
+      char position[220];
+      std::snprintf(position, sizeof(position),
+                    "Lat %.8f  Lon %.8f  Alt %.2f m",
+                    announcement_editor_.latitude(),
+                    announcement_editor_.longitude(),
+                    announcement_editor_.altitude_m());
+      label(l + 22, t - 135, position, 0.75f, 0.85f, 0.95f);
+      button(l + 22, t - 148, l + 152, t - 180, "LEFT 1 M");
+      button(l + 172, t - 148, l + 342, t - 180, "FORWARD 1 M");
+      button(l + 362, t - 148, r - 22, t - 180, "RIGHT 1 M");
+      button(l + 22, t - 190, l + 152, t - 222, "ALT -0.1 M");
+      button(l + 172, t - 190, l + 342, t - 222, "BACK 1 M");
+      button(l + 362, t - 190, r - 22, t - 222, "ALT +0.1 M");
+      button(l + 22, t - 232, l + 152, t - 264, "CANCEL",
+             1.0f, 0.72f, 0.20f);
+      button(l + 172, t - 232, r - 22, t - 264, "SAVE SPEAKER",
+             1.0f, 0.72f, 0.20f);
+      label(l + 22, t - 292, announcement_editor_.status().c_str(),
+            0.75f, 0.85f, 0.95f);
+      label(l + 22, b + 42,
+            "The volume icon is editor-only and disappears after SAVE.",
+            0.55f, 0.85f, 0.75f);
+      return;
+    }
+
+    label(l + 22, t - 105, "ANNOUNCEMENT COMPOSER", 0.25f, 0.95f, 0.65f);
+    label(l + 22, t - 130, announcement_editor_.status().c_str(),
+          0.75f, 0.85f, 0.95f);
+    char value[120];
+    button(l + 22, t - 145, l + 132, t - 177, "< AIRLINE");
+    std::snprintf(value, sizeof(value),
+                  announcement_editor_.airline_auto_detected()
+                      ? "AUTO: %.18s"
+                      : "%.24s",
+                  announcement_editor_.airline().c_str());
+    button(l + 142, t - 145, r - 142, t - 177, value,
+           announcement_editor_.airline_auto_detected() ? 0.25f : 0.90f,
+           announcement_editor_.airline_auto_detected() ? 1.0f : 0.95f,
+           announcement_editor_.airline_auto_detected() ? 0.65f : 1.0f);
+    button(r - 132, t - 145, r - 22, t - 177, "AIRLINE >");
+
+    button(l + 22, t - 185, l + 132, t - 217, "FLIGHT -10");
+    std::snprintf(value, sizeof(value), "%d  |  +1",
+                  announcement_editor_.flight_number());
+    button(l + 142, t - 185, r - 142, t - 217, value, 0.90f, 0.95f, 1.0f);
+    button(r - 132, t - 185, r - 22, t - 217, "FLIGHT +10");
+
+    button(l + 22, t - 225, l + 132, t - 257, "< EVENT");
+    std::snprintf(value, sizeof(value), "%.24s",
+                  announcement_editor_.event().c_str());
+    button(l + 142, t - 225, r - 142, t - 257, value, 0.90f, 0.95f, 1.0f);
+    button(r - 132, t - 225, r - 22, t - 257, "EVENT >");
+
+    const bool arrival =
+        announcement_editor_.event().find("landed") != std::string::npos ||
+        announcement_editor_.event().find("arrival") != std::string::npos;
+    button(l + 22, t - 265, l + 132, t - 297,
+           arrival ? "< ORIGIN" : "< DEST");
+    std::snprintf(value, sizeof(value), "%.24s",
+                  (arrival ? announcement_editor_.origin()
+                           : announcement_editor_.destination()).c_str());
+    button(l + 142, t - 265, r - 142, t - 297, value, 0.90f, 0.95f, 1.0f);
+    button(r - 132, t - 265, r - 22, t - 297,
+           arrival ? "ORIGIN >" : "DEST >");
+
+    button(l + 22, t - 305, l + 132, t - 337, "GATE -");
+    std::snprintf(value, sizeof(value), "GATE %d",
+                  announcement_editor_.gate());
+    button(l + 142, t - 305, r - 142, t - 337, value, 0.90f, 0.95f, 1.0f);
+    button(r - 132, t - 305, r - 22, t - 337, "GATE +");
+
+    button(l + 22, t - 345, l + 127, t - 377, "GAIN -");
+    button(l + 137, t - 345, l + 242, t - 377, "GAIN +");
+    button(l + 252, t - 345, l + 357, t - 377, "RADIUS -");
+    button(l + 367, t - 345, r - 22, t - 377, "RADIUS +");
+    std::snprintf(value, sizeof(value), "Gain %.1f | Radius %.0f m",
+                  announcement_editor_.gain(),
+                  announcement_editor_.radius_m());
+    label(l + 22, t - 395, value, 0.55f, 0.85f, 0.75f);
+    announcement_editor_.refresh_speakers();
+    const auto& saved_speakers = announcement_editor_.speakers();
+    label(l + 22, t - 420, "SAVED SPEAKERS - SELECT ONE BEFORE DELETE",
+          0.25f, 0.95f, 0.65f);
+    int speaker_y = t - 442;
+    for (size_t i = 0; i < std::min<size_t>(saved_speakers.size(), 4); ++i, speaker_y -= 26) {
+      char speaker_line[160];
+      std::snprintf(speaker_line, sizeof(speaker_line), "%s%zu. %.24s",
+                    announcement_editor_.selected_speaker() == static_cast<int>(i) ? "> " : "  ",
+                    i + 1, saved_speakers[i].label.c_str());
+      button(l + 22, speaker_y + 12, r - 22, speaker_y - 12, speaker_line,
+             announcement_editor_.selected_speaker() == static_cast<int>(i) ? 1.0f : 0.75f,
+             announcement_editor_.selected_speaker() == static_cast<int>(i) ? 0.72f : 0.85f,
+             announcement_editor_.selected_speaker() == static_cast<int>(i) ? 0.20f : 0.95f);
+    }
+    button(l + 22, b + 44, l + 235, b + 14,
+           announcement_editor_.delete_confirmation_pending() ? "CONFIRM DELETE SELECTED" : "DELETE SELECTED",
+           1.0f, 0.30f, 0.25f);
+    button(l + 245, b + 44, r - 22, b + 14, "PLACE SPEAKER",
+           1.0f, 0.72f, 0.20f);
+    return;
+  }
 
   if (tab_ == 4 && developer_mode_) {
     if (vdgs_editor_.state() == VdgsEditorState::Placing) {
@@ -376,65 +430,6 @@ void Tablet::draw_impl() {
           0.55f, 0.85f, 0.75f);
     return;
   }
-  if (tab_ == 0) {
-    label(l + 52, t - 112, "HANGAR MAP", 0.25f, 0.95f, 0.95f);
-    label(l + 190, t - 112, "Tap a hangar point to open / close", 0.62f, 0.74f, 0.84f);
-    auto hangars = scenery_.nearby(ServiceType::Hangar, latitude_, longitude_, 2000.0);
-    const int map_left = l + 52;
-    const int map_right = r - 52;
-    const int map_top = t - 136;
-    const int map_bottom = b + 104;
-    panel(map_left, map_top, map_right, map_bottom);
-
-    // Simple airport-style schematic: aircraft is the map center, SSA hangars are clickable pins.
-    const float ppm = map_pixels_per_meter(hangars, latitude_, longitude_,
-                                           map_right - map_left, map_top - map_bottom);
-    const int center_x = (map_left + map_right) / 2;
-    const int center_y = (map_top + map_bottom) / 2;
-    panel(center_x - 3, map_top - 28, center_x + 3, map_bottom + 28);
-    status_chip(center_x - 18, center_y + 12, center_x + 18, center_y - 12,
-                "AC", 0.25f, 0.95f, 0.95f);
-
-    ServiceObject* selected = nullptr;
-    for (size_t i = 0; i < hangars.size(); ++i) {
-      auto* object = hangars[i];
-      const MapPoint pt = map_point(latitude_, longitude_, object->latitude, object->longitude,
-                                    map_left, map_top, map_right, map_bottom, ppm);
-      const bool is_selected = object->id == selected_hangar_id_;
-      if (is_selected) selected = object;
-      char pin[12];
-      std::snprintf(pin, sizeof(pin), "H%zu", i + 1);
-      status_chip(pt.x - 18, pt.y + 12, pt.x + 18, pt.y - 12, pin,
-                  is_selected ? 1.0f : 0.72f,
-                  is_selected ? 0.72f : 0.82f,
-                  is_selected ? 0.20f : 0.92f);
-      char hangar_name[96];
-      std::snprintf(hangar_name, sizeof(hangar_name), "%.20s", object->label.c_str());
-      label(pt.x + 24, pt.y - 4, hangar_name, 0.58f, 0.72f, 0.84f);
-    }
-
-    if (hangars.empty()) {
-      label(map_left + 24, map_top - 46, "No SSA hangar found within 2 km.", 1.0f, 0.65f, 0.35f);
-    }
-
-    if (selected) {
-      const char* state = "CLOSED";
-      if (selected->progress >= 0.999f) state = "OPEN";
-      else if (selected->target > selected->progress) state = "OPENING";
-      else if (selected->target < selected->progress) state = "CLOSING";
-      char status[180];
-      std::snprintf(status, sizeof(status), "%s  •  %s  •  %.0f%%",
-                    selected->label.c_str(), state, selected->progress * 100.0f);
-      label(map_left + 16, map_bottom + 18, status,
-            (std::string(state) == "OPENING" || std::string(state) == "CLOSING") ? 1.0f : 0.35f,
-            (std::string(state) == "OPENING" || std::string(state) == "CLOSING") ? 0.72f : 1.0f,
-            (std::string(state) == "OPENING" || std::string(state) == "CLOSING") ? 0.20f : 0.65f);
-    } else {
-      label(map_left + 16, map_bottom + 18, "SELECT A HANGAR POINT", 0.55f, 0.85f, 0.75f);
-    }
-    return;
-  }
-
   if (tab_ == 1) {
     label(l + 22, t - 105, automatic_ ? "Automatic jetway: ON" : "Automatic jetway: OFF");
     label(l + 22, t - 130, "Turboprop: 0 | Narrow: 1 | Wide: by forward doors");
@@ -498,10 +493,14 @@ void Tablet::draw_impl() {
     }
     label(l + 22, b + 42, "DEVELOPER | BACKGROUND TRAFFIC", 0.55f, 0.85f, 0.75f);
     return;
+  } else {
+    label(l + 22, t - 105, "Nearby hangars (maximum 2 km):");
   }
-  const ServiceType list_type = tab_ == 1 ? ServiceType::Jetway : ServiceType::Vehicle;
+  const ServiceType list_type = tab_ == 0 ? ServiceType::Hangar
+                                           : tab_ == 1 ? ServiceType::Jetway
+                                                       : ServiceType::Vehicle;
   auto list = scenery_.nearby(list_type, latitude_, longitude_,
-                              tab_ == 1 ? 35.0 : 2000.0);
+                              tab_ == 0 ? 2000.0 : tab_ == 1 ? 35.0 : 2000.0);
   int y = t - 165;
   for (size_t i = 0; i < std::min<size_t>(list.size(), 8); ++i, y -= 34) {
     const auto* object = list[i];
@@ -560,23 +559,34 @@ int Tablet::mouse_impl(int x, int y, XPLMMouseStatus status) {
   const int nav_bottom = b + 38;
   const int nav_left = l + 52;
   const int nav_gap = 8;
-  const int nav_w = developer_mode_ ? 134 : 162;
+  const int nav_w = 116;
   if (y <= nav_top && y >= nav_bottom) {
-    static const int base_tabs[5] = {7, 0, 1, 5, 3};
-    for (int i = 0; i < 5; ++i) {
+    for (int i = 0; i < 7; ++i) {
       const int left = nav_left + (nav_w + nav_gap) * i;
       if (x >= left && x <= left + nav_w) {
-        tab_ = base_tabs[i];
+        static const int tabs[7] = {7, 0, 1, 5, 6, 3, 4};
+        if (tabs[i] == 4 && !developer_mode_) toggle_developer_mode();
+        tab_ = tabs[i];
         return 1;
       }
     }
+  }
+  if (false && y < t - 45 && y > t - 85) {
     if (developer_mode_) {
-      const int left = nav_left + (nav_w + nav_gap) * 5;
-      if (x >= left && x <= left + nav_w) {
-        tab_ = 4;
-        return 1;
-      }
+      if (x < l + 60) tab_ = 0;
+      else if (x < l + 110) tab_ = 1;
+      else if (x < l + 180) tab_ = 5;
+      else if (x < l + 235) tab_ = 6;
+      else if (x < l + 290) tab_ = 3;
+      else if (x < l + 345) tab_ = 4;
+      else tab_ = 2;
+    } else {
+      if (x < l + 112) tab_ = 0;
+      else if (x < l + 220) tab_ = 1;
+      else if (x < l + 318) tab_ = 5;
+      else tab_ = 3;
     }
+    return 1;
   }
   if (tab_ == 3) {
     if (y < t - 120 && y > t - 165) toggle_auto_();
@@ -584,7 +594,79 @@ int Tablet::mouse_impl(int x, int y, XPLMMouseStatus status) {
     else if (y < t - 235 && y > t - 285) reload_config_();
     return 1;
   }
-
+  if (tab_ == 6) {
+    if (announcement_editor_.state() == AnnouncementEditorState::Placing) {
+      const bool column_left = x >= l + 22 && x <= l + 152;
+      const bool column_middle = x >= l + 172 && x <= l + 342;
+      const bool column_right = x >= l + 362 && x <= r - 22;
+      if (y <= t - 148 && y >= t - 180) {
+        if (column_left) announcement_editor_.move_side(-1.0f);
+        else if (column_middle) announcement_editor_.move_forward(1.0f);
+        else if (column_right) announcement_editor_.move_side(1.0f);
+      } else if (y <= t - 190 && y >= t - 222) {
+        if (column_left) announcement_editor_.adjust_altitude(-0.1f);
+        else if (column_middle) announcement_editor_.move_forward(-1.0f);
+        else if (column_right) announcement_editor_.adjust_altitude(0.1f);
+      } else if (y <= t - 232 && y >= t - 264) {
+        if (column_left) announcement_editor_.cancel();
+        else if (x >= l + 172 && x <= r - 22) {
+          if (announcement_editor_.save()) reload_config_();
+        }
+      }
+      return 1;
+    }
+    const bool left_button = x >= l + 22 && x <= l + 132;
+    const bool right_button = x >= r - 132 && x <= r - 22;
+    if (y <= t - 145 && y >= t - 177) {
+      if (left_button) announcement_editor_.next_airline(-1);
+      else if (right_button) announcement_editor_.next_airline(1);
+      else announcement_editor_.detect_airline_from_livery();
+    } else if (y <= t - 185 && y >= t - 217) {
+      if (left_button) announcement_editor_.adjust_flight_number(-10);
+      else if (right_button) announcement_editor_.adjust_flight_number(10);
+      else if (x >= l + 142 && x <= r - 142)
+        announcement_editor_.adjust_flight_number(1);
+    } else if (y <= t - 225 && y >= t - 257) {
+      if (left_button) announcement_editor_.next_event(-1);
+      else if (right_button) announcement_editor_.next_event(1);
+    } else if (y <= t - 265 && y >= t - 297) {
+      const bool arrival =
+          announcement_editor_.event().find("landed") != std::string::npos ||
+          announcement_editor_.event().find("arrival") != std::string::npos;
+      if (left_button) {
+        if (arrival) announcement_editor_.next_origin(-1);
+        else announcement_editor_.next_destination(-1);
+      } else if (right_button) {
+        if (arrival) announcement_editor_.next_origin(1);
+        else announcement_editor_.next_destination(1);
+      }
+    } else if (y <= t - 305 && y >= t - 337) {
+      if (left_button) announcement_editor_.adjust_gate(-1);
+      else if (right_button) announcement_editor_.adjust_gate(1);
+    } else if (y <= t - 345 && y >= t - 377) {
+      if (x >= l + 22 && x <= l + 127) announcement_editor_.adjust_gain(-0.1f);
+      else if (x >= l + 137 && x <= l + 242) announcement_editor_.adjust_gain(0.1f);
+      else if (x >= l + 252 && x <= l + 357) announcement_editor_.adjust_radius(-25.0f);
+      else if (x >= l + 367 && x <= r - 22) announcement_editor_.adjust_radius(25.0f);
+    } else if (y <= t - 430 && y >= t - 550) {
+      announcement_editor_.refresh_speakers();
+      const auto& saved_speakers = announcement_editor_.speakers();
+      int speaker_y = t - 442;
+      for (size_t i = 0; i < std::min<size_t>(saved_speakers.size(), 4); ++i, speaker_y -= 26) {
+        if (y <= speaker_y + 12 && y >= speaker_y - 12 && x >= l + 22 && x <= r - 22) {
+          announcement_editor_.select_speaker(i);
+          return 1;
+        }
+      }
+    } else if (y <= b + 44 && y >= b + 14) {
+      if (x >= l + 22 && x <= l + 235) {
+        if (announcement_editor_.delete_selected_speaker()) reload_config_();
+      } else if (x >= l + 245 && x <= r - 22) {
+        announcement_editor_.begin(latitude_, longitude_, heading_);
+      }
+    }
+    return 1;
+  }
   if (tab_ == 4) {
     if (vdgs_editor_.state() == VdgsEditorState::Placing) {
       const bool column_left = x >= l + 22 && x <= l + 152;
@@ -650,25 +732,6 @@ int Tablet::mouse_impl(int x, int y, XPLMMouseStatus status) {
     }
     return 1;
   }
-  if (tab_ == 0) {
-    auto hangars = scenery_.nearby(ServiceType::Hangar, latitude_, longitude_, 2000.0);
-    const int map_left = l + 52;
-    const int map_right = r - 52;
-    const int map_top = t - 136;
-    const int map_bottom = b + 104;
-    const float ppm = map_pixels_per_meter(hangars, latitude_, longitude_,
-                                           map_right - map_left, map_top - map_bottom);
-    for (auto* object : hangars) {
-      const MapPoint pt = map_point(latitude_, longitude_, object->latitude, object->longitude,
-                                    map_left, map_top, map_right, map_bottom, ppm);
-      if (x >= pt.x - 24 && x <= pt.x + 24 && y >= pt.y - 20 && y <= pt.y + 20) {
-        selected_hangar_id_ = object->id;
-        toggle_object_(*object);
-        return 1;
-      }
-    }
-    return 1;
-  }
   if (tab_ == 1 && y < t - 85 && y > t - 145) { toggle_auto_(); return 1; }
   if (tab_ == 5) {
     if (x >= r - 150 && x <= r - 22 && y <= t - 82 && y >= t - 112) {
@@ -705,9 +768,11 @@ int Tablet::mouse_impl(int x, int y, XPLMMouseStatus status) {
     return 1;
   }
   const int index = (t - 145 - y) / 34;
-  const ServiceType list_type = tab_ == 1 ? ServiceType::Jetway : ServiceType::Vehicle;
+  const ServiceType list_type = tab_ == 0 ? ServiceType::Hangar
+                                           : tab_ == 1 ? ServiceType::Jetway
+                                                       : ServiceType::Vehicle;
   auto list = scenery_.nearby(list_type, latitude_, longitude_,
-                              tab_ == 1 ? 35.0 : 2000.0);
+                              tab_ == 0 ? 2000.0 : tab_ == 1 ? 35.0 : 2000.0);
   if (index >= 0 && static_cast<size_t>(index) < list.size()) toggle_object_(*list[index]);
   return 1;
 }
