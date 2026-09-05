@@ -63,7 +63,8 @@ class RouteEditor {
 public:
   RouteEditor() = default;
   ~RouteEditor();
-  bool load(const std::string& xplane_root);
+  bool load(const std::string& xplane_root, double aircraft_latitude = 0.0,
+            double aircraft_longitude = 0.0);
   void schedule_saved_route_load();
   void unload();
   void update(float elapsed_seconds);

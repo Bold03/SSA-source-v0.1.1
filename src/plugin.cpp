@@ -537,7 +537,11 @@ void reload_scenery() {
   XPLMGetSystemPath(root);
   const bool loaded = scenery->load(root);
   if (route_editor) {
-    route_editor->load(root);
+    const double aircraft_lat = lat_ref ? XPLMGetDatad(lat_ref) : 0.0;
+    const double aircraft_lon = lon_ref ? XPLMGetDatad(lon_ref) : 0.0;
+    const bool vehicle_loaded = route_editor->load(root, aircraft_lat, aircraft_lon);
+    log(std::string("Vehicle scenery selection: ") +
+        (vehicle_loaded ? route_editor->status() : "FAILED | " + route_editor->status()));
     route_editor->schedule_saved_route_load();
   }
   if (vdgs_editor) vdgs_editor->load(root);
@@ -726,12 +730,25 @@ PLUGIN_API int XPluginStart(char* name, char* signature, char* description) {
     vdgs_stop_ref = &refs.create("boldstudio31/ssa/vdgs/stop", 0.0f, false);
     vdgs_lateral_ref = &refs.create("boldstudio31/ssa/vdgs/lateral", 0.5f, false);
     vdgs_distance_ref = &refs.create("boldstudio31/ssa/vdgs/distance_ratio", 1.0f, false);
+
+    // Resolve aircraft position before loading the vehicle system so the
+    // multi-airport loader can select the nearest SSA scenery immediately.
+    lat_ref = XPLMFindDataRef("sim/flightmodel/position/latitude");
+    lon_ref = XPLMFindDataRef("sim/flightmodel/position/longitude");
+    heading_ref = XPLMFindDataRef("sim/flightmodel/position/psi");
+    agl_ref = XPLMFindDataRef("sim/flightmodel/position/y_agl");
+
     scenery = std::make_unique<ssa::SceneryManager>(refs);
     char root[2048]{};
     XPLMGetSystemPath(root);
     scenery->load(root);
     route_editor = std::make_unique<ssa::RouteEditor>();
-    route_editor->load(root);
+    const double startup_lat = lat_ref ? XPLMGetDatad(lat_ref) : 0.0;
+    const double startup_lon = lon_ref ? XPLMGetDatad(lon_ref) : 0.0;
+    const bool startup_vehicle_loaded = route_editor->load(root, startup_lat, startup_lon);
+    log(std::string("Vehicle scenery selection: ") +
+        (startup_vehicle_loaded ? route_editor->status()
+                                : "FAILED | " + route_editor->status()));
     vdgs_editor = std::make_unique<ssa::VdgsEditor>();
     vdgs_editor->load(root);
     tablet = std::make_unique<ssa::Tablet>(*scenery, *route_editor, *vdgs_editor,
@@ -740,10 +757,6 @@ PLUGIN_API int XPluginStart(char* name, char* signature, char* description) {
                                            toggle_vehicle_spin_test,
                                            set_vehicle_steering_test);
 
-    lat_ref = XPLMFindDataRef("sim/flightmodel/position/latitude");
-    lon_ref = XPLMFindDataRef("sim/flightmodel/position/longitude");
-    heading_ref = XPLMFindDataRef("sim/flightmodel/position/psi");
-    agl_ref = XPLMFindDataRef("sim/flightmodel/position/y_agl");
     icao_ref = XPLMFindDataRef("sim/aircraft/view/acf_ICAO");
     door_open_ref = XPLMFindDataRef("sim/cockpit2/switches/door_open");
     prop_ref = XPLMFindDataRef("sim/aircraft/prop/acf_en_type");
@@ -778,7 +791,7 @@ PLUGIN_API int XPluginStart(char* name, char* signature, char* description) {
     XPLMAppendMenuItem(menu, "Toggle nearest hangar", reinterpret_cast<void*>(3), 0);
     XPLMAppendMenuItem(menu, "Toggle nearest jetway", reinterpret_cast<void*>(4), 0);
     XPLMRegisterFlightLoopCallback(flight_loop, -1.0f, nullptr);
-    log("SSA 0.32.2 started: " + std::to_string(scenery->objects().size()) +
+    log("SSA 0.32.3 started: " + std::to_string(scenery->objects().size()) +
         " object(s), L1 door dataref " +
         (door_open_ref ? "detected" : "not found"));
     return 1;

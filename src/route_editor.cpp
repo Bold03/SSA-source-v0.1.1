@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <limits>
 #include <stdexcept>
 #ifdef _WIN32
 #ifndef NOMINMAX
@@ -90,39 +91,154 @@ void RouteEditor::unload() {
   state_ = RouteEditorState::Unavailable;
 }
 
-bool RouteEditor::load(const std::string& xplane_root) {
+bool RouteEditor::load(const std::string& xplane_root, double aircraft_latitude,
+                       double aircraft_longitude) {
   unload();
+  aircraft_lat_ = aircraft_latitude;
+  aircraft_lon_ = aircraft_longitude;
   field_of_view_ref_ = XPLMFindDataRef("sim/graphics/view/field_of_view_deg");
   const fs::path custom = fs::path(xplane_root) / "Custom Scenery";
+
+  struct VehicleSceneryCandidate {
+    fs::path directory;
+    json root;
+    std::string airport;
+    double reference_lat{};
+    double reference_lon{};
+    bool has_reference{};
+    double distance_m{std::numeric_limits<double>::infinity()};
+  };
+
+  const auto valid_position = [](double lat, double lon) {
+    if (!std::isfinite(lat) || !std::isfinite(lon)) return false;
+    if (lat < -90.0 || lat > 90.0 || lon < -180.0 || lon > 180.0) return false;
+    // 0,0 is commonly used as an unconfigured placeholder in SSA JSON files.
+    return std::abs(lat) > 0.000001 || std::abs(lon) > 0.000001;
+  };
+
+  const bool aircraft_position_valid = valid_position(aircraft_latitude, aircraft_longitude);
+  std::vector<VehicleSceneryCandidate> candidates;
+
   try {
     if (!fs::exists(custom)) {
       status_ = "Custom Scenery folder not found";
       return false;
     }
+
+    // Index every SSA scenery that actually provides vehicle models. We no
+    // longer stop at the first ssa.json found in Custom Scenery.
     for (const auto& entry : fs::directory_iterator(custom)) {
+      if (!entry.is_directory()) continue;
       const fs::path config_path = entry.path() / "ssa.json";
-      if (!entry.is_directory() || !fs::exists(config_path)) continue;
+      if (!fs::exists(config_path)) continue;
+
       std::ifstream input(config_path);
-      const json root = json::parse(input);
+      json root = json::parse(input);
       if (!root.contains("vehicle_models") || !root.at("vehicle_models").is_array() ||
           root.at("vehicle_models").empty()) continue;
-      airport_id_ = root.value("airport", std::string("----"));
-      // Saved traffic is now controlled by aircraft AGL instead of a fixed
-      // airport-radius cutoff. 5,000 ft is the default and can be changed in
-      // ssa.json (for example to 10,000 ft).
-      vehicle_hide_agl_ft_ = std::clamp(
-          root.value("vehicle_hide_agl_ft", 5000.0f), 500.0f, 20000.0f);
-      airport_reference_valid_ = false;
-      if (root.contains("objects") && root.at("objects").is_array()) {
-        for (const auto& configured_object : root.at("objects")) {
-          if (!configured_object.contains("latitude") ||
-              !configured_object.contains("longitude")) continue;
-          airport_reference_lat_ = configured_object.at("latitude").get<double>();
-          airport_reference_lon_ = configured_object.at("longitude").get<double>();
-          airport_reference_valid_ = true;
+
+      VehicleSceneryCandidate candidate;
+      candidate.directory = entry.path();
+      candidate.root = std::move(root);
+      candidate.airport = candidate.root.value("airport", std::string("----"));
+
+      // Prefer a real configured scenery object as the airport reference.
+      if (candidate.root.contains("objects") && candidate.root.at("objects").is_array()) {
+        for (const auto& object : candidate.root.at("objects")) {
+          if (!object.contains("latitude") || !object.contains("longitude")) continue;
+          const double lat = object.at("latitude").get<double>();
+          const double lon = object.at("longitude").get<double>();
+          if (!valid_position(lat, lon)) continue;
+          candidate.reference_lat = lat;
+          candidate.reference_lon = lon;
+          candidate.has_reference = true;
           break;
         }
       }
+
+      // A scenery can contain only vehicle_models and routes. In that case use
+      // the first valid saved waypoint instead of accidentally treating 0,0 as
+      // the airport location.
+      if (!candidate.has_reference) {
+        const fs::path route_file = entry.path() / "ssa_routes.json";
+        if (fs::exists(route_file)) {
+          try {
+            std::ifstream route_input(route_file);
+            const json route_root = json::parse(route_input);
+            if (route_root.contains("routes") && route_root.at("routes").is_array()) {
+              for (const auto& route : route_root.at("routes")) {
+                if (!route.contains("waypoints") || !route.at("waypoints").is_array()) continue;
+                for (const auto& waypoint : route.at("waypoints")) {
+                  if (!waypoint.contains("latitude") || !waypoint.contains("longitude")) continue;
+                  const double lat = waypoint.at("latitude").get<double>();
+                  const double lon = waypoint.at("longitude").get<double>();
+                  if (!valid_position(lat, lon)) continue;
+                  candidate.reference_lat = lat;
+                  candidate.reference_lon = lon;
+                  candidate.has_reference = true;
+                  break;
+                }
+                if (candidate.has_reference) break;
+              }
+            }
+          } catch (...) {
+            // A malformed route file must not prevent the scenery's vehicle
+            // models from being considered; the normal route loader will
+            // report route JSON errors later.
+          }
+        }
+      }
+
+      if (aircraft_position_valid && candidate.has_reference) {
+        candidate.distance_m = geographic_distance_m(
+            aircraft_latitude, aircraft_longitude,
+            candidate.reference_lat, candidate.reference_lon);
+      }
+      candidates.push_back(std::move(candidate));
+    }
+
+    if (candidates.empty()) {
+      status_ = "Add vehicle_models to ssa.json";
+      return false;
+    }
+
+    // Nearest airport wins. Candidates without a usable geographic reference
+    // are kept as fallbacks after all position-aware sceneries.
+    std::stable_sort(candidates.begin(), candidates.end(),
+                     [](const VehicleSceneryCandidate& a,
+                        const VehicleSceneryCandidate& b) {
+      if (a.has_reference != b.has_reference) return a.has_reference > b.has_reference;
+      if (a.distance_m != b.distance_m) return a.distance_m < b.distance_m;
+      return a.directory.string() < b.directory.string();
+    });
+
+    auto clear_candidate_models = [&]() {
+      if (instance_) XPLMDestroyInstance(instance_);
+      instance_ = nullptr;
+      object_ = nullptr;
+      for (auto object : model_objects_)
+        if (object) XPLMUnloadObject(object);
+      model_ids_.clear();
+      model_labels_.clear();
+      model_objects_.clear();
+      selected_model_index_ = 0;
+      selected_random_model_ = false;
+    };
+
+    // If the nearest scenery has a broken OBJ path, continue to the next
+    // candidate instead of making every other airport's vehicles unavailable.
+    for (const auto& candidate : candidates) {
+      clear_candidate_models();
+      const auto& root = candidate.root;
+      const auto& entry_path = candidate.directory;
+
+      airport_id_ = candidate.airport;
+      vehicle_hide_agl_ft_ = std::clamp(
+          root.value("vehicle_hide_agl_ft", 5000.0f), 500.0f, 20000.0f);
+      airport_reference_valid_ = candidate.has_reference;
+      airport_reference_lat_ = candidate.reference_lat;
+      airport_reference_lon_ = candidate.reference_lon;
+
       const auto& model = root.at("vehicle_models").front();
       ground_offset_m_ = model.value("ground_offset_m", 0.445f);
       speed_mps_ = std::clamp(model.value("speed_mps", 4.0f), 0.5f, 15.0f);
@@ -163,8 +279,10 @@ bool RouteEditor::load(const std::string& xplane_root) {
           model.value("collision_lane_half_width_m", 3.5f), 1.0f, 10.0f);
       collision_refresh_s_ = std::clamp(
           model.value("collision_refresh_s", 0.10f), 0.05f, 0.50f);
-      scenery_directory_ = entry.path().string();
-      route_path_ = (entry.path() / "ssa_routes.json").string();
+
+      scenery_directory_ = entry_path.string();
+      route_path_ = (entry_path / "ssa_routes.json").string();
+
       for (const auto& configured_model : root.at("vehicle_models")) {
         if (!configured_model.contains("object")) continue;
         const std::string id = configured_model.value(
@@ -172,17 +290,16 @@ bool RouteEditor::load(const std::string& xplane_root) {
         if (std::find(model_ids_.begin(), model_ids_.end(), id) != model_ids_.end())
           continue;
         const fs::path object_path =
-            entry.path() / configured_model.at("object").get<std::string>();
+            entry_path / configured_model.at("object").get<std::string>();
         XPLMObjectRef loaded_object = XPLMLoadObject(object_path.string().c_str());
         if (!loaded_object) continue;
         model_ids_.push_back(id);
         model_labels_.push_back(configured_model.value("label", id));
         model_objects_.push_back(loaded_object);
       }
-      if (model_objects_.empty()) {
-        status_ = "Cannot load any configured vehicle OBJ";
-        return false;
-      }
+
+      if (model_objects_.empty()) continue;
+
       selected_model_index_ = 0;
       selected_random_model_ = false;
       model_id_ = model_ids_.front();
@@ -191,24 +308,26 @@ bool RouteEditor::load(const std::string& xplane_root) {
       const char* datarefs[] = {"boldstudio31/ssa/vehicle/wheel_spin",
                                 "boldstudio31/ssa/vehicle/steering", nullptr};
       instance_ = XPLMCreateInstance(object_, datarefs);
-      probe_ = XPLMCreateProbe(xplm_ProbeY);
+      if (!probe_) probe_ = XPLMCreateProbe(xplm_ProbeY);
       if (!instance_ || !probe_) {
-        status_ = "Cannot create vehicle instance";
-        unload();
-        return false;
+        clear_candidate_models();
+        continue;
       }
+
       state_ = RouteEditorState::Idle;
-      status_ = "Ready: " + model_label_ + " | Waiting for scenery";
+      const std::string folder = entry_path.filename().string();
+      status_ = "Ready: " + model_label_ + " | " + airport_id_ + " | " + folder;
       return true;
     }
+
+    status_ = "Vehicle OBJ not found in any matching SSA scenery";
+    return false;
   } catch (const std::exception& e) {
     const std::string message = e.what();
     unload();
     status_ = message;
     return false;
   }
-  status_ = "Add vehicle_models to ssa.json";
-  return false;
 }
 
 void RouteEditor::schedule_saved_route_load() {
