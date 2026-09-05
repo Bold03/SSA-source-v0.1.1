@@ -1,19 +1,28 @@
 #include "ssa/tablet.hpp"
 #include <XPLMGraphics.h>
+#include <XPLMProcessing.h>
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <string>
 #include <vector>
 
 namespace ssa {
 namespace {
-constexpr float kBlueR = 0.08f;
-constexpr float kBlueG = 0.28f;
+constexpr float kBlueR = 0.10f;
+constexpr float kBlueG = 0.30f;
 constexpr float kBlueB = 1.00f;
-constexpr float kWhite = 0.92f;
+constexpr float kText = 0.93f;
+constexpr float kSoft = 0.70f;
 
-void label(int x, int y, const char* text, float r = kWhite, float g = kWhite,
-           float b = kWhite) {
+float now_sec() { return XPLMGetElapsedTime(); }
+
+int lerpi(int a, int b, float p) {
+  return static_cast<int>(std::lround(a + (b - a) * p));
+}
+
+void label(int x, int y, const char* text, float r = kText, float g = kText,
+           float b = kText) {
   float color[] = {r, g, b};
   XPLMDrawString(color, x, y, const_cast<char*>(text), nullptr,
                  xplmFont_Proportional);
@@ -21,33 +30,6 @@ void label(int x, int y, const char* text, float r = kWhite, float g = kWhite,
 
 void panel(int left, int top, int right, int bottom) {
   XPLMDrawTranslucentDarkBox(left, top, right, bottom);
-}
-
-void classic_button(int left, int top, int right, int bottom, const char* text,
-                    bool selected = false, bool danger = false,
-                    bool disabled = false) {
-  panel(left, top, right, bottom);
-  if (disabled) {
-    label(left + 8, bottom + 9, text, 0.42f, 0.42f, 0.42f);
-  } else if (danger) {
-    label(left + 8, bottom + 9, text, 1.0f, 0.22f, 0.18f);
-  } else if (selected) {
-    label(left + 8, bottom + 9, text, 0.25f, 0.65f, 1.0f);
-  } else {
-    label(left + 8, bottom + 9, text, kBlueR, kBlueG, kBlueB);
-  }
-}
-
-void title_bar(int left, int top, int right, const char* title, bool dev_mode) {
-  panel(left, top, right, top - 28);
-  label(left + 8, top - 19, title, 0.92f, 0.92f, 0.92f);
-  if (dev_mode) label(right - 116, top - 19, "DEV MODE", 1.0f, 0.68f, 0.12f);
-  classic_button(right - 28, top - 4, right - 4, top - 24, "X", false, true);
-}
-
-void footer_back(int left, int bottom, int right, const char* text = "BACK TO SSA MAIN MENU") {
-  classic_button(left + 10, bottom + 42, left + 190, bottom + 14, text);
-  label(right - 112, bottom + 23, "SSA READY", 0.60f, 0.72f, 0.82f);
 }
 
 bool inside(int x, int y, int left, int top, int right, int bottom) {
@@ -125,7 +107,12 @@ Tablet::~Tablet() {
 }
 
 void Tablet::toggle() {
-  XPLMSetWindowIsVisible(window_, visible() ? 0 : 1);
+  const bool show = !visible();
+  if (show) {
+    open_anim_ = 0.0f;
+    last_draw_time_ = now_sec();
+  }
+  XPLMSetWindowIsVisible(window_, show ? 1 : 0);
 }
 
 bool Tablet::visible() const {
@@ -149,6 +136,11 @@ void Tablet::set_position(double latitude, double longitude, float heading) {
   heading_ = heading;
 }
 
+void Tablet::pulse(const char* id) {
+  pulse_button_id_ = id ? id : "";
+  pulse_start_time_ = now_sec();
+}
+
 void Tablet::draw(XPLMWindowID, void* refcon) {
   static_cast<Tablet*>(refcon)->draw_impl();
 }
@@ -159,46 +151,82 @@ int Tablet::mouse(XPLMWindowID, int x, int y, XPLMMouseStatus status,
 }
 
 void Tablet::draw_impl() {
+  const float now = now_sec();
+  if (last_draw_time_ < 0.0f) last_draw_time_ = now;
+  const float dt = std::clamp(now - last_draw_time_, 0.0f, 0.10f);
+  last_draw_time_ = now;
+  open_anim_ = std::min(1.0f, open_anim_ + dt * 4.0f);
+  const float appear = open_anim_;
+  const float pulse_p = std::clamp((now - pulse_start_time_) / 0.24f, 0.0f, 1.0f);
+
   int l{}, t{}, r{}, b{};
   XPLMGetWindowGeometry(window_, &l, &t, &r, &b);
+  const int x_inset = static_cast<int>((1.0f - appear) * 32.0f);
+  const int y_drop = static_cast<int>((1.0f - appear) * 18.0f);
+  l += x_inset;
+  r -= x_inset;
+  t -= y_drop;
+  b += static_cast<int>((1.0f - appear) * 10.0f);
+
   panel(l + 2, t - 2, r - 2, b + 2);
+  panel(l + 10, t - 34, r - 10, b + 10);
+  panel(l + 10, t - 4, r - 10, t - 28);
+  label((l + r) / 2 - 128, t - 20, "SSA - Scenery Service Animation", 0.62f, 0.64f, 0.68f);
+  label(l + 22, t - 51, "SSA MAIN MENU", 0.94f, 0.94f, 0.94f);
+  panel(r - 34, t - 10, r - 12, t - 28);
+  label(r - 28, t - 22, "X", 1.0f, 0.22f, 0.22f);
 
-  const char* title = "SSA MAIN MENU";
-  if (tab_ == 0) title = "SSA HANGAR MENU";
-  else if (tab_ == 1) title = "SSA JETWAY MENU";
-  else if (tab_ == 3) title = "SSA SETTING MENU";
-  else if (tab_ == 4) title = developer_page_ == 1 ? "SSA VEHICLE DEVELOPER MENU"
-                                                    : developer_page_ == 2
-                                                          ? "SSA PARKING DEVELOPER MENU"
-                                                          : "SSA DEVELOPER MENU";
-  else if (tab_ == 5) title = "SSA PARKING MENU";
-  title_bar(l + 4, t - 4, r - 4, title, developer_mode_);
+  auto button = [&](int left, int top, int right, int bottom, const char* text,
+                    const char* id, bool blue = false, bool danger = false,
+                    bool disabled = false) {
+    int pad = 0;
+    if (!pulse_button_id_.empty() && pulse_button_id_ == id && pulse_p < 1.0f) {
+      const float s = std::sin(pulse_p * 3.1415926f);
+      pad = static_cast<int>(std::lround(4.0f * s));
+    }
+    panel(left - pad, top + pad, right + pad, bottom - pad);
+    if (disabled) label(left + 8, bottom + 9, text, 0.45f, 0.45f, 0.45f);
+    else if (danger) label(left + 8, bottom + 9, text, 1.0f, 0.20f, 0.20f);
+    else if (blue) label(left + 8, bottom + 9, text, kBlueR, kBlueG, kBlueB);
+    else label(left + 8, bottom + 9, text, 0.78f, 0.78f, 0.78f);
+  };
 
+  auto footer_back = [&](const char* text = "BACK TO SSA MAIN MENU") {
+    button(l + 18, b + 54, l + 148, b + 30, text, "back", true);
+  };
+
+  auto title_for_tab = [&]() -> const char* {
+    if (tab_ == 0) return "SSA HANGAR MENU";
+    if (tab_ == 1) return "SSA JETWAY MENU";
+    if (tab_ == 3) return "SSA SETTING MENU";
+    if (tab_ == 4) return developer_page_ == 1 ? "SSA VEHICLE DEVELOPER MENU"
+                          : developer_page_ == 2 ? "SSA PARKING DEVELOPER MENU"
+                                                : "SSA DEVELOPER MENU";
+    if (tab_ == 5) return "SSA PARKING MENU";
+    return "SSA MAIN MENU";
+  };
+  label(l + 22, t - 20, title_for_tab(), 0.94f, 0.94f, 0.94f);
+
+  // MAIN / RADIAL MENU
   if (tab_ == 7) {
-    const int cx = (l + r) / 2;
-    const int cy = (t + b) / 2 + 10;
+    label(l + 34, t - 80, "SCENERY SERVICE ANIMATION", 0.68f, 0.68f, 0.68f);
+    label(r - 160, t - 80, "X-PLANE CONNECTED", 0.35f, 0.95f, 0.55f);
 
-    label(l + 22, t - 52, "SCENERY SERVICE ANIMATION", 0.62f, 0.62f, 0.62f);
-    label(r - 150, t - 52, "X-PLANE CONNECTED", 0.35f, 0.95f, 0.55f);
+    const int cx = (l + r) / 2 + 2;
+    const int cy = (t + b) / 2 + 22;
 
-    // Radial-style service menu inspired by the user's Figma mock-up.
-    classic_button(cx - 82, cy + 155, cx + 82, cy + 119, "HANGAR");
-    classic_button(cx - 215, cy + 86, cx - 65, cy + 50, "JETWAY");
-    classic_button(cx + 65, cy + 86, cx + 215, cy + 50, "VDGS / PARKING");
-    classic_button(cx - 215, cy - 14, cx - 65, cy - 50, "SETTINGS");
-    if (developer_mode_)
-      classic_button(cx + 65, cy - 14, cx + 215, cy - 50, "DEVELOPER", true);
-    else
-      classic_button(cx + 65, cy - 14, cx + 215, cy - 50,
-                     "DEVELOPER LOCKED", false, false, true);
-    classic_button(cx - 82, cy - 84, cx + 82, cy - 120, "CLOSE SSA", false, true);
+    panel(cx - 64, cy + 64, cx + 64, cy - 64);
+    label(cx - 18, cy + 6, "SSA", 0.70f, 0.70f, 0.70f);
+    label(cx - 24, cy - 16, "CLOSE", 0.70f, 0.70f, 0.70f);
 
-    panel(cx - 58, cy + 36, cx + 58, cy - 36);
-    label(cx - 17, cy + 4, "SSA", 0.72f, 0.72f, 0.72f);
-    label(cx - 49, cy - 17, developer_mode_ ? "DEVELOPER" : "PLAYER MODE",
-          developer_mode_ ? 1.0f : 0.55f,
-          developer_mode_ ? 0.68f : 0.75f,
-          developer_mode_ ? 0.12f : 0.90f);
+    button(cx - 40, cy + 112, cx + 40, cy + 88, "HANGAR", "main_hangar", true);
+    button(cx - 132, cy + 62, cx - 60, cy + 38, "JETWAY", "main_jetway", true);
+    button(cx + 60, cy + 62, cx + 144, cy + 38, "PARKING", "main_parking", true);
+    button(cx - 132, cy - 14, cx - 60, cy - 38, "SETTINGS", "main_settings", true);
+    button(cx + 60, cy - 14, cx + 144, cy - 38,
+           developer_mode_ ? "DEVELOPER" : "LOCKED",
+           "main_dev", developer_mode_, false, !developer_mode_);
+    button(cx - 40, cy - 64, cx + 40, cy - 88, "VDGS", "main_vdgs", true);
 
     char nearby[160];
     const auto hangars = scenery_.nearby(ServiceType::Hangar, latitude_, longitude_, 2000.0);
@@ -206,278 +234,191 @@ void Tablet::draw_impl() {
     const auto displays = scenery_.nearby(ServiceType::ParkingDisplay, latitude_, longitude_, 2000.0);
     std::snprintf(nearby, sizeof(nearby), "NEARBY: %zu HANGAR  |  %zu JETWAY  |  %zu VDGS",
                   hangars.size(), jetways.size(), displays.size());
-    label(l + 22, b + 28, nearby, 0.60f, 0.72f, 0.82f);
+    label(l + 34, b + 28, nearby, 0.60f, 0.72f, 0.82f);
+    label(l + 34, b + 12, developer_mode_ ? "DEVELOPER MODE" : "PLAYER MODE",
+          developer_mode_ ? 1.0f : 0.60f,
+          developer_mode_ ? 0.68f : 0.72f,
+          developer_mode_ ? 0.12f : 0.82f);
     return;
   }
 
+  // HANGAR MENU
   if (tab_ == 0) {
     auto hangars = scenery_.nearby(ServiceType::Hangar, latitude_, longitude_, 2000.0);
     if (selected_hangar_id_.empty() && !hangars.empty()) selected_hangar_id_ = hangars.front()->id;
     ServiceObject* selected = find_by_id(hangars, selected_hangar_id_);
 
-    label(l + 20, t - 54, "SELECT HANGAR", 0.72f, 0.72f, 0.72f);
-    int y = t - 76;
+    int y = t - 74;
     const size_t shown = std::min<size_t>(hangars.size(), 5);
-    for (size_t i = 0; i < shown; ++i, y -= 42) {
+    for (size_t i = 0; i < shown; ++i, y -= 30) {
       auto* object = hangars[i];
-      char row[160];
-      const char* state = "CLOSED";
-      if (object->progress >= 0.999f) state = "OPEN";
-      else if (object->target > object->progress) state = "OPENING";
-      else if (object->target < object->progress) state = "CLOSING";
-      std::snprintf(row, sizeof(row), "%zu  %.22s    %s  %.0f%%", i + 1,
-                    object->label.c_str(), state, object->progress * 100.0f);
-      classic_button(l + 20, y, r - 20, y - 32, row,
-                     object->id == selected_hangar_id_);
+      char row[96];
+      std::snprintf(row, sizeof(row), "%zu. %s", i + 1, object->label.c_str());
+      button(l + 36, y, l + 176, y - 24, row,
+             object->id.c_str(), true);
     }
-    if (hangars.empty()) label(l + 20, y - 8, "NO SSA HANGAR FOUND WITHIN 2 KM", 1.0f, 0.55f, 0.35f);
+    if (hangars.empty()) label(l + 36, y - 8, "NO SSA HANGAR FOUND WITHIN 2 KM", 1.0f, 0.55f, 0.35f);
 
-    const int action_top = b + 132;
-    classic_button(l + 20, action_top, l + 170, action_top - 34, "OPEN HANGAR");
-    classic_button(l + 184, action_top, l + 334, action_top - 34, "CLOSE HANGAR");
-    classic_button(l + 348, action_top, l + 498, action_top - 34, "TOGGLE DOOR");
+    button(l + 38, b + 122, l + 98, b + 98, "OPEN", "hang_open");
+    button(l + 38, b + 92, l + 98, b + 68, "CLOSE", "hang_close");
+    button(l + 38, b + 62, l + 98, b + 38, "TOGGLE", "hang_toggle");
+    footer_back();
+
     if (selected) {
-      char info[180];
-      std::snprintf(info, sizeof(info), "SELECTED: %.28s  |  DATAREF: %.48s",
-                    selected->label.c_str(), selected->dataref.c_str());
-      label(l + 20, b + 84, info, 0.62f, 0.72f, 0.82f);
+      const char* state = "CLOSED";
+      if (selected->progress >= 0.999f) state = "OPEN";
+      else if (selected->target > selected->progress) state = "OPENING";
+      else if (selected->target < selected->progress) state = "CLOSING";
+      char info1[128];
+      char info2[128];
+      std::snprintf(info1, sizeof(info1), "SELECTED: %s", selected->label.c_str());
+      std::snprintf(info2, sizeof(info2), "STATUS: %s  %.0f%%", state, selected->progress * 100.0f);
+      label(l + 220, b + 110, info1, 0.78f, 0.78f, 0.78f);
+      label(l + 220, b + 88, info2, kBlueR, kBlueG, kBlueB);
     }
-    footer_back(l, b, r);
     return;
   }
 
+  // JETWAY MENU
   if (tab_ == 1) {
     auto jetways = scenery_.nearby(ServiceType::Jetway, latitude_, longitude_, 50.0);
     if (selected_jetway_id_.empty() && !jetways.empty()) selected_jetway_id_ = jetways.front()->id;
     ServiceObject* selected = find_by_id(jetways, selected_jetway_id_);
 
-    label(l + 20, t - 54, automatic_ ? "AUTOMATIC JETWAY: ON" : "AUTOMATIC JETWAY: OFF",
-          automatic_ ? 0.35f : 1.0f, automatic_ ? 0.95f : 0.68f,
-          automatic_ ? 0.55f : 0.18f);
-    int y = t - 78;
-    const size_t shown = std::min<size_t>(jetways.size(), 6);
-    for (size_t i = 0; i < shown; ++i, y -= 42) {
+    int y = t - 74;
+    const size_t shown = std::min<size_t>(jetways.size(), 5);
+    for (size_t i = 0; i < shown; ++i, y -= 30) {
       auto* object = jetways[i];
-      char row[180];
-      if (object->head_error_m >= 0.0f)
-        std::snprintf(row, sizeof(row), "%zu  %.22s    %s    %.0f CM", i + 1,
-                      object->label.c_str(), jetway_state_name(object->jetway_state),
-                      object->head_error_m * 100.0f);
-      else
-        std::snprintf(row, sizeof(row), "%zu  %.22s    %s", i + 1,
-                      object->label.c_str(), jetway_state_name(object->jetway_state));
-      classic_button(l + 20, y, r - 20, y - 32, row,
-                     object->id == selected_jetway_id_);
+      char row[96];
+      std::snprintf(row, sizeof(row), "%zu. %s", i + 1, object->label.c_str());
+      button(l + 36, y, l + 176, y - 24, row, object->id.c_str(), true);
     }
-    if (jetways.empty()) label(l + 20, y - 8, "NO JETWAY FOUND WITHIN 50 M", 1.0f, 0.55f, 0.35f);
-
-    const int action_top = b + 132;
-    classic_button(l + 20, action_top, l + 160, action_top - 34, "CONNECT");
-    classic_button(l + 174, action_top, l + 334, action_top - 34, "DISCONNECT");
-    classic_button(l + 348, action_top, l + 498, action_top - 34,
-                   automatic_ ? "AUTO: ON" : "AUTO: OFF", automatic_);
+    button(l + 38, b + 122, l + 112, b + 98, "CONNECT", "jet_connect");
+    button(l + 38, b + 92, l + 112, b + 68, "DISCONNECT", "jet_disconnect");
+    button(l + 38, b + 62, l + 112, b + 38, automatic_ ? "AUTO ON" : "AUTO OFF", "jet_auto", true);
+    footer_back();
     if (selected) {
-      char info[180];
-      std::snprintf(info, sizeof(info), "TARGET DOOR: L1  |  STATE: %s",
-                    jetway_state_name(selected->jetway_state));
-      label(l + 20, b + 84, info, 0.62f, 0.72f, 0.82f);
+      char info1[128];
+      char info2[128];
+      std::snprintf(info1, sizeof(info1), "SELECTED: %s", selected->label.c_str());
+      std::snprintf(info2, sizeof(info2), "STATE: %s", jetway_state_name(selected->jetway_state));
+      label(l + 220, b + 110, info1, 0.78f, 0.78f, 0.78f);
+      label(l + 220, b + 88, info2, kBlueR, kBlueG, kBlueB);
     }
-    footer_back(l, b, r);
     return;
   }
 
+  // PARKING / VDGS MENU
   if (tab_ == 5) {
     auto displays = scenery_.nearby(ServiceType::ParkingDisplay, latitude_, longitude_, 2000.0);
-    const bool manual_gate = std::any_of(displays.begin(), displays.end(),
-                                         [](const auto* display) { return display->vdgs_armed; });
-    label(l + 20, t - 54, manual_gate ? "PARKING SELECTION: MANUAL" : "PARKING SELECTION: AUTO",
-          manual_gate ? 1.0f : 0.35f, manual_gate ? 0.68f : 0.95f,
-          manual_gate ? 0.12f : 0.55f);
-    int y = t - 78;
-    const size_t shown = std::min<size_t>(displays.size(), 6);
-    for (size_t i = 0; i < shown; ++i, y -= 42) {
+    int y = t - 74;
+    const size_t shown = std::min<size_t>(displays.size(), 5);
+    for (size_t i = 0; i < shown; ++i, y -= 30) {
       auto* display = displays[i];
-      char row[180];
-      const char* state = display->vdgs_armed && !display->vdgs_selected
-                              ? "ARMED"
-                              : vdgs_state_name(display->vdgs_state);
-      if (display->vdgs_selected)
-        std::snprintf(row, sizeof(row), "%zu  %.22s    %s   D%+.1fM  L%+.2fM", i + 1,
-                      display->label.c_str(), state, display->vdgs_distance_error_m,
-                      display->vdgs_lateral_error_m);
-      else
-        std::snprintf(row, sizeof(row), "%zu  %.22s    %s", i + 1,
-                      display->label.c_str(), state);
-      classic_button(l + 20, y, r - 20, y - 32, row, display->vdgs_armed);
+      char row[96];
+      std::snprintf(row, sizeof(row), "%zu. %s", i + 1, display->label.c_str());
+      button(l + 36, y, l + 176, y - 24, row, display->id.c_str(), true);
     }
-    if (displays.empty()) label(l + 20, y - 8, "NO VDGS / PARKING FOUND WITHIN 2 KM", 1.0f, 0.55f, 0.35f);
-
-    const int action_top = b + 132;
-    classic_button(l + 20, action_top, l + 190, action_top - 34,
-                   manual_gate ? "RETURN AUTO" : "AUTO CORRIDOR", !manual_gate);
-    label(l + 214, action_top - 22,
-          "SELECT A PARKING ROW TO ARM ITS VDGS", 0.62f, 0.72f, 0.82f);
-    footer_back(l, b, r);
+    button(l + 38, b + 122, l + 128, b + 98, "ARM VDGS", "park_arm");
+    button(l + 38, b + 92, l + 128, b + 68, "AUTO MODE", "park_auto");
+    button(l + 38, b + 62, l + 128, b + 38, "CLEAR", "park_clear");
+    footer_back();
+    if (!displays.empty()) {
+      auto* sel = displays.front();
+      char info1[128];
+      char info2[128];
+      std::snprintf(info1, sizeof(info1), "PARKING: %s", sel->label.c_str());
+      std::snprintf(info2, sizeof(info2), "STATUS: %s", vdgs_state_name(sel->vdgs_state));
+      label(l + 220, b + 110, info1, 0.78f, 0.78f, 0.78f);
+      label(l + 220, b + 88, info2, kBlueR, kBlueG, kBlueB);
+    }
     return;
   }
 
+  // SETTINGS
   if (tab_ == 3) {
-    label(l + 20, t - 58, "GENERAL", 0.72f, 0.72f, 0.72f);
-    classic_button(l + 20, t - 78, l + 250, t - 112,
-                   automatic_ ? "AUTOMATIC JETWAY: ON" : "AUTOMATIC JETWAY: OFF",
-                   automatic_);
-    classic_button(l + 20, t - 122, l + 250, t - 156,
-                   developer_mode_ ? "DEVELOPER MODE: ON" : "DEVELOPER MODE: OFF",
-                   developer_mode_);
-    classic_button(l + 20, t - 166, l + 250, t - 200, "RELOAD SSA CONFIG");
-
-    panel(l + 286, t - 78, r - 20, t - 238);
-    label(l + 304, t - 102, "SSA SETTINGS", 0.82f, 0.82f, 0.82f);
-    label(l + 304, t - 128, "Developer Mode unlocks:", 0.60f, 0.70f, 0.82f);
-    label(l + 304, t - 150, "- Vehicle route authoring", 0.60f, 0.70f, 0.82f);
-    label(l + 304, t - 172, "- VDGS / parking placement", 0.60f, 0.70f, 0.82f);
-    label(l + 304, t - 194, "- Manual test controls", 0.60f, 0.70f, 0.82f);
-    label(l + 304, t - 220, "Player UI stays focused on scenery tools.", 0.45f, 0.78f, 0.65f);
-
-    footer_back(l, b, r);
+    button(l + 36, t - 74, l + 106, t - 98, "GENERAL", "set_general", true);
+    button(l + 36, t - 104, l + 106, t - 128, "VEHICLE", "set_vehicle", true);
+    button(l + 36, t - 134, l + 106, t - 158, "HANGAR", "set_hangar", true);
+    button(l + 36, t - 164, l + 106, t - 188, "PARKING", "set_parking", true);
+    button(l + 36, t - 194, l + 106, t - 218, "VDGS", "set_vdgs", true);
+    button(l + 36, b + 108, l + 106, b + 84,
+           automatic_ ? "AUTO ON" : "AUTO OFF", "set_auto");
+    button(l + 36, b + 78, l + 106, b + 54,
+           developer_mode_ ? "DEV ON" : "DEV OFF", "set_dev");
+    button(l + 36, b + 48, l + 106, b + 24, "RELOAD", "set_reload", true);
+    footer_back("BACK TO SSA SETTINGS");
+    label(l + 180, t - 76, "Developer Mode unlocks scenery authoring tools.", 0.74f, 0.74f, 0.74f);
+    label(l + 180, t - 98, "Player mode keeps the tablet simple.", 0.74f, 0.74f, 0.74f);
     return;
   }
 
+  // DEVELOPER
   if (tab_ == 4 && developer_mode_) {
     if (developer_page_ == 0) {
-      label(l + 20, t - 58, "SELECT DEVELOPER TOOL", 1.0f, 0.68f, 0.12f);
-      classic_button(l + 20, t - 86, l + 280, t - 128, "VEHICLE DEVELOPER MENU", true);
-      classic_button(l + 20, t - 140, l + 280, t - 182, "PARKING / VDGS DEVELOPER", true);
-      classic_button(l + 20, t - 194, l + 280, t - 236, "RELOAD SSA CONFIG");
-      classic_button(l + 20, t - 248, l + 280, t - 290, "DISABLE DEVELOPER MODE", false, true);
-
-      panel(l + 320, t - 86, r - 20, t - 290);
-      label(l + 338, t - 110, "DEVELOPER STATUS", 0.82f, 0.82f, 0.82f);
-      label(l + 338, t - 136, "Vehicle route editor", 0.58f, 0.72f, 0.82f);
-      label(l + 338, t - 158, route_editor_.status().c_str(), 0.35f, 0.90f, 0.58f);
-      label(l + 338, t - 196, "VDGS placement editor", 0.58f, 0.72f, 0.82f);
-      label(l + 338, t - 218, vdgs_editor_.status().c_str(), 0.35f, 0.90f, 0.58f);
-      label(l + 338, t - 258,
-            realops_detected_ ? "RealOps: DETECTED" : "RealOps: NOT DETECTED",
-            realops_detected_ ? 0.35f : 0.82f,
-            realops_detected_ ? 0.90f : 0.62f,
-            realops_detected_ ? 0.58f : 0.30f);
-      footer_back(l, b, r);
+      button(l + 36, t - 74, l + 160, t - 98, "VEHICLE MENU", "dev_vehicle", true);
+      button(l + 36, t - 104, l + 160, t - 128, "PARKING MENU", "dev_parking", true);
+      button(l + 36, t - 134, l + 160, t - 158, "RELOAD CONFIG", "dev_reload", true);
+      button(l + 36, t - 164, l + 160, t - 188, "EXIT DEV MODE", "dev_exit");
+      label(l + 220, t - 76, "DEVELOPER STATUS", 0.84f, 0.84f, 0.84f);
+      label(l + 220, t - 100, route_editor_.status().c_str(), 0.68f, 0.68f, 0.68f);
+      label(l + 220, t - 122, vdgs_editor_.status().c_str(), 0.68f, 0.68f, 0.68f);
+      footer_back("BACK TO SSA SETTINGS");
       return;
     }
 
     if (developer_page_ == 1) {
-      label(l + 20, t - 58, "VEHICLE ROUTE AUTHORING", 1.0f, 0.68f, 0.12f);
-      const auto state = route_editor_.state();
-      if (state == RouteEditorState::Unavailable) {
-        label(l + 20, t - 94, route_editor_.status().c_str(), 1.0f, 0.45f, 0.30f);
-        label(l + 20, t - 118, "Add vehicle_models to ssa.json, then reload.", 0.62f, 0.72f, 0.82f);
-      } else if (state == RouteEditorState::Idle) {
-        classic_button(l + 20, t - 86, l + 240, t - 126, "PLAN NEW VEHICLE ROUTE", true);
-        if (route_editor_.saved_route_available()) {
-          classic_button(l + 260, t - 86, l + 390, t - 126, "START ALL");
-          classic_button(l + 410, t - 86, l + 540, t - 126, "STOP ALL", false, true);
-        }
-      } else if (state == RouteEditorState::Editing) {
-        char route_info[180];
-        std::snprintf(route_info, sizeof(route_info), "ANCHORS: %zu  |  LOOP: %s  |  HEADING: %.0f",
-                      route_editor_.point_count(), route_editor_.loop_enabled() ? "ON" : "OFF",
-                      route_editor_.heading());
-        label(l + 20, t - 86, route_info, 0.62f, 0.72f, 0.82f);
-        classic_button(l + 20, t - 106, l + 140, t - 140, "LEFT 15");
-        classic_button(l + 152, t - 106, l + 284, t - 140, "FORWARD 2M");
-        classic_button(l + 296, t - 106, l + 416, t - 140, "RIGHT 15");
-        classic_button(l + 20, t - 150, l + 140, t - 184, "BACK 2M");
-        classic_button(l + 152, t - 150, l + 284, t - 184, "ADD ANCHOR");
-        classic_button(l + 296, t - 150, l + 416, t - 184, "UNDO");
-        classic_button(l + 20, t - 194, l + 140, t - 228, "TEST ROUTE", true);
-        classic_button(l + 152, t - 194, l + 284, t - 228, "SAVE ROUTE", true);
-        classic_button(l + 296, t - 194, l + 416, t - 228, "CANCEL", false, true);
-      } else if (state == RouteEditorState::Planning) {
-        label(l + 20, t - 92, "TOP-DOWN PLANNER ACTIVE", 1.0f, 0.68f, 0.12f);
-        label(l + 20, t - 116, "Add route anchors in the planner overlay.", 0.62f, 0.72f, 0.82f);
-      } else if (state == RouteEditorState::Testing) {
-        label(l + 20, t - 92, "ROUTE TEST ACTIVE", 1.0f, 0.68f, 0.12f);
-        classic_button(l + 20, t - 112, l + 160, t - 148, "STOP TEST", false, true);
-      }
-
-      label(l + 20, b + 146, "MANUAL WHEEL TEST", 0.72f, 0.72f, 0.72f);
-      classic_button(l + 20, b + 132, l + 160, b + 98,
-                     vehicle_spinning_ ? "WHEEL SPIN: ON" : "WHEEL SPIN: OFF",
-                     vehicle_spinning_);
-      classic_button(l + 174, b + 132, l + 284, b + 98, "STEER LEFT");
-      classic_button(l + 296, b + 132, l + 406, b + 98, "CENTER");
-      classic_button(l + 418, b + 132, l + 528, b + 98, "STEER RIGHT");
-      char steer[80];
-      std::snprintf(steer, sizeof(steer), "STEERING DATAREF: %+.2f", vehicle_steering_);
-      label(l + 20, b + 76, steer, 0.60f, 0.72f, 0.82f);
-      classic_button(l + 20, b + 58, l + 198, b + 28, "BACK TO DEVELOPER");
+      button(l + 36, t - 74, l + 132, t - 98, "PLAN NEW ROUTE", "veh_plan", true);
+      button(l + 36, t - 104, l + 102, t - 128, "TEST", "veh_test");
+      button(l + 36, t - 134, l + 102, t - 158, "SAVE", "veh_save");
+      button(l + 36, t - 164, l + 132, t - 188, "BACK TO DEV", "veh_back", true);
+      int fy = t - 74;
+      const char* fields[] = {"ROUTE", "MODEL", "SPEED", "LOOP", "HEADING", "STATUS"};
+      for (int i = 0; i < 6; ++i, fy -= 30) button(l + 220, fy, l + 318, fy - 24, fields[i], fields[i]);
+      button(l + 220, b + 82, l + 278, b + 58, "TEST SPIN", "veh_spin");
+      button(l + 220, b + 52, l + 278, b + 28, "DELETE", "veh_delete", false, true);
       return;
     }
 
     if (developer_page_ == 2) {
-      label(l + 20, t - 58, "PARKING / VDGS AUTHORING", 1.0f, 0.68f, 0.12f);
-      if (vdgs_editor_.state() == VdgsEditorState::Placing) {
-        char placement[220];
-        std::snprintf(placement, sizeof(placement),
-                      "LAT %.8f  LON %.8f  ALT %.2fM  HDG %.1f",
-                      vdgs_editor_.latitude(), vdgs_editor_.longitude(),
-                      vdgs_editor_.altitude_m(), vdgs_editor_.heading());
-        label(l + 20, t - 86, placement, 0.62f, 0.72f, 0.82f);
-        classic_button(l + 20, t - 106, l + 140, t - 140, "LEFT 1M");
-        classic_button(l + 152, t - 106, l + 284, t - 140, "FORWARD 1M");
-        classic_button(l + 296, t - 106, l + 416, t - 140, "RIGHT 1M");
-        classic_button(l + 20, t - 150, l + 140, t - 184, "ALT -0.1M");
-        classic_button(l + 152, t - 150, l + 284, t - 184, "BACK 1M");
-        classic_button(l + 296, t - 150, l + 416, t - 184, "ALT +0.1M");
-        classic_button(l + 20, t - 194, l + 140, t - 228, "ROTATE -5");
-        classic_button(l + 152, t - 194, l + 284, t - 228, "SAVE PARKING", true);
-        classic_button(l + 296, t - 194, l + 416, t - 228, "ROTATE +5");
-        classic_button(l + 20, t - 238, l + 140, t - 272, "RANGE -10");
-        classic_button(l + 152, t - 238, l + 284, t - 272, "WIDTH -1");
-        classic_button(l + 296, t - 238, l + 416, t - 272, "WIDTH +1");
-        classic_button(l + 428, t - 238, l + 548, t - 272, "RANGE +10");
-        classic_button(l + 20, t - 282, l + 140, t - 316, "CANCEL", false, true);
-        char detection[140];
-        std::snprintf(detection, sizeof(detection), "CAPTURE %.0fM  |  CORRIDOR %.0fM",
-                      vdgs_editor_.acquisition_distance_m(),
-                      vdgs_editor_.corridor_half_width_m() * 2.0f);
-        label(l + 162, t - 303, detection, 0.60f, 0.72f, 0.82f);
-      } else {
-        classic_button(l + 20, t - 86, l + 250, t - 128, "PLACE NEW PARKING / VDGS", true);
-        label(l + 20, t - 160, vdgs_editor_.status().c_str(), 0.60f, 0.72f, 0.82f);
-        label(l + 20, t - 188, "Capture Point -> Centerline -> Stop Point", 0.60f, 0.72f, 0.82f);
-      }
-      classic_button(l + 20, b + 58, l + 198, b + 28, "BACK TO DEVELOPER");
+      button(l + 36, t - 74, l + 132, t - 98, "PLACE NEW VDGS", "park_new", true);
+      button(l + 36, t - 104, l + 112, t - 128, "RELOAD SNAP", "park_snap");
+      button(l + 36, b + 82, l + 104, b + 58, "DELETE", "park_delete", false, true);
+      button(l + 36, b + 52, l + 132, b + 28, "BACK TO DEV", "park_back", true);
+      int fy = t - 74;
+      const char* fields[] = {"PARK ID", "STAND", "LAT", "LON", "HEADING", "RANGE"};
+      for (int i = 0; i < 6; ++i, fy -= 30) button(l + 220, fy, l + 318, fy - 24, fields[i], fields[i]);
       return;
     }
   }
 
-  // Fallback: never expose an inaccessible developer screen.
   tab_ = 7;
 }
 
 int Tablet::mouse_impl(int x, int y, XPLMMouseStatus status) {
   if (status != xplm_MouseDown) return 1;
+  if (open_anim_ < 0.95f) return 1;
+
   int l{}, t{}, r{}, b{};
   XPLMGetWindowGeometry(window_, &l, &t, &r, &b);
 
-  if (inside(x, y, r - 32, t - 4, r - 4, t - 28)) {
+  if (inside(x, y, r - 34, t - 10, r - 12, t - 28)) {
+    pulse("close");
     XPLMSetWindowIsVisible(window_, 0);
     return 1;
   }
 
   if (tab_ == 7) {
-    const int cx = (l + r) / 2;
-    const int cy = (t + b) / 2 + 10;
-    if (inside(x, y, cx - 82, cy + 155, cx + 82, cy + 119)) tab_ = 0;
-    else if (inside(x, y, cx - 215, cy + 86, cx - 65, cy + 50)) tab_ = 1;
-    else if (inside(x, y, cx + 65, cy + 86, cx + 215, cy + 50)) tab_ = 5;
-    else if (inside(x, y, cx - 215, cy - 14, cx - 65, cy - 50)) tab_ = 3;
-    else if (developer_mode_ && inside(x, y, cx + 65, cy - 14, cx + 215, cy - 50)) {
-      developer_page_ = 0;
-      tab_ = 4;
-    } else if (inside(x, y, cx - 82, cy - 84, cx + 82, cy - 120)) {
+    const int cx = (l + r) / 2 + 2;
+    const int cy = (t + b) / 2 + 22;
+    if (inside(x, y, cx - 40, cy + 112, cx + 40, cy + 88)) { pulse("main_hangar"); tab_ = 0; }
+    else if (inside(x, y, cx - 132, cy + 62, cx - 60, cy + 38)) { pulse("main_jetway"); tab_ = 1; }
+    else if (inside(x, y, cx + 60, cy + 62, cx + 144, cy + 38)) { pulse("main_parking"); tab_ = 5; }
+    else if (inside(x, y, cx - 132, cy - 14, cx - 60, cy - 38)) { pulse("main_settings"); tab_ = 3; }
+    else if (inside(x, y, cx - 40, cy - 64, cx + 40, cy - 88)) { pulse("main_vdgs"); tab_ = 5; }
+    else if (developer_mode_ && inside(x, y, cx + 60, cy - 14, cx + 144, cy - 38)) {
+      pulse("main_dev"); developer_page_ = 0; tab_ = 4;
+    } else if (inside(x, y, cx - 64, cy + 64, cx + 64, cy - 64)) {
       XPLMSetWindowIsVisible(window_, 0);
     }
     return 1;
@@ -485,151 +426,94 @@ int Tablet::mouse_impl(int x, int y, XPLMMouseStatus status) {
 
   if (tab_ == 0) {
     auto hangars = scenery_.nearby(ServiceType::Hangar, latitude_, longitude_, 2000.0);
-    int row_top = t - 76;
+    int row_top = t - 74;
     const size_t shown = std::min<size_t>(hangars.size(), 5);
-    for (size_t i = 0; i < shown; ++i, row_top -= 42) {
-      if (inside(x, y, l + 20, row_top, r - 20, row_top - 32)) {
+    for (size_t i = 0; i < shown; ++i, row_top -= 30) {
+      if (inside(x, y, l + 36, row_top, l + 176, row_top - 24)) {
         selected_hangar_id_ = hangars[i]->id;
+        pulse(hangars[i]->id.c_str());
         return 1;
       }
     }
     ServiceObject* selected = find_by_id(hangars, selected_hangar_id_);
-    const int action_top = b + 132;
-    if (selected && inside(x, y, l + 20, action_top, l + 170, action_top - 34))
-      scenery_.set_uniform_target(*selected, 1.0f);
-    else if (selected && inside(x, y, l + 184, action_top, l + 334, action_top - 34))
-      scenery_.set_uniform_target(*selected, 0.0f);
-    else if (selected && inside(x, y, l + 348, action_top, l + 498, action_top - 34))
-      toggle_object_(*selected);
-    else if (inside(x, y, l + 10, b + 42, l + 190, b + 14))
-      tab_ = 7;
+    if (selected && inside(x, y, l + 38, b + 122, l + 98, b + 98)) { pulse("hang_open"); scenery_.set_uniform_target(*selected, 1.0f); }
+    else if (selected && inside(x, y, l + 38, b + 92, l + 98, b + 68)) { pulse("hang_close"); scenery_.set_uniform_target(*selected, 0.0f); }
+    else if (selected && inside(x, y, l + 38, b + 62, l + 98, b + 38)) { pulse("hang_toggle"); toggle_object_(*selected); }
+    else if (inside(x, y, l + 18, b + 54, l + 148, b + 30)) { pulse("back"); tab_ = 7; }
     return 1;
   }
 
   if (tab_ == 1) {
     auto jetways = scenery_.nearby(ServiceType::Jetway, latitude_, longitude_, 50.0);
-    int row_top = t - 78;
-    const size_t shown = std::min<size_t>(jetways.size(), 6);
-    for (size_t i = 0; i < shown; ++i, row_top -= 42) {
-      if (inside(x, y, l + 20, row_top, r - 20, row_top - 32)) {
+    int row_top = t - 74;
+    const size_t shown = std::min<size_t>(jetways.size(), 5);
+    for (size_t i = 0; i < shown; ++i, row_top -= 30) {
+      if (inside(x, y, l + 36, row_top, l + 176, row_top - 24)) {
         selected_jetway_id_ = jetways[i]->id;
+        pulse(jetways[i]->id.c_str());
         return 1;
       }
     }
     ServiceObject* selected = find_by_id(jetways, selected_jetway_id_);
-    const int action_top = b + 132;
-    if (selected && inside(x, y, l + 20, action_top, l + 160, action_top - 34))
-      scenery_.set_uniform_target(*selected, 1.0f);
-    else if (selected && inside(x, y, l + 174, action_top, l + 334, action_top - 34))
-      scenery_.set_uniform_target(*selected, 0.0f);
-    else if (inside(x, y, l + 348, action_top, l + 498, action_top - 34))
-      toggle_auto_();
-    else if (inside(x, y, l + 10, b + 42, l + 190, b + 14))
-      tab_ = 7;
+    if (selected && inside(x, y, l + 38, b + 122, l + 112, b + 98)) { pulse("jet_connect"); scenery_.set_uniform_target(*selected, 1.0f); }
+    else if (selected && inside(x, y, l + 38, b + 92, l + 112, b + 68)) { pulse("jet_disconnect"); scenery_.set_uniform_target(*selected, 0.0f); }
+    else if (inside(x, y, l + 38, b + 62, l + 112, b + 38)) { pulse("jet_auto"); toggle_auto_(); }
+    else if (inside(x, y, l + 18, b + 54, l + 148, b + 30)) { pulse("back"); tab_ = 7; }
     return 1;
   }
 
   if (tab_ == 5) {
     auto displays = scenery_.nearby(ServiceType::ParkingDisplay, latitude_, longitude_, 2000.0);
-    int row_top = t - 78;
-    const size_t shown = std::min<size_t>(displays.size(), 6);
-    for (size_t i = 0; i < shown; ++i, row_top -= 42) {
-      if (inside(x, y, l + 20, row_top, r - 20, row_top - 32)) {
+    int row_top = t - 74;
+    const size_t shown = std::min<size_t>(displays.size(), 5);
+    for (size_t i = 0; i < shown; ++i, row_top -= 30) {
+      if (inside(x, y, l + 36, row_top, l + 176, row_top - 24)) {
+        pulse(displays[i]->id.c_str());
         select_vdgs_(displays[i]);
         return 1;
       }
     }
-    const int action_top = b + 132;
-    if (inside(x, y, l + 20, action_top, l + 190, action_top - 34))
-      select_vdgs_(nullptr);
-    else if (inside(x, y, l + 10, b + 42, l + 190, b + 14))
-      tab_ = 7;
+    if (inside(x, y, l + 38, b + 122, l + 128, b + 98)) { pulse("park_arm"); if (!displays.empty()) select_vdgs_(displays.front()); }
+    else if (inside(x, y, l + 38, b + 92, l + 128, b + 68)) { pulse("park_auto"); select_vdgs_(nullptr); }
+    else if (inside(x, y, l + 38, b + 62, l + 128, b + 38)) { pulse("park_clear"); select_vdgs_(nullptr); }
+    else if (inside(x, y, l + 18, b + 54, l + 148, b + 30)) { pulse("back"); tab_ = 7; }
     return 1;
   }
 
   if (tab_ == 3) {
-    if (inside(x, y, l + 20, t - 78, l + 250, t - 112))
-      toggle_auto_();
-    else if (inside(x, y, l + 20, t - 122, l + 250, t - 156))
-      toggle_developer_mode();
-    else if (inside(x, y, l + 20, t - 166, l + 250, t - 200))
-      reload_config_();
-    else if (inside(x, y, l + 10, b + 42, l + 190, b + 14))
-      tab_ = 7;
+    if (inside(x, y, l + 36, b + 108, l + 106, b + 84)) { pulse("set_auto"); toggle_auto_(); }
+    else if (inside(x, y, l + 36, b + 78, l + 106, b + 54)) { pulse("set_dev"); toggle_developer_mode(); }
+    else if (inside(x, y, l + 36, b + 48, l + 106, b + 24)) { pulse("set_reload"); reload_config_(); }
+    else if (inside(x, y, l + 18, b + 54, l + 148, b + 30)) { pulse("back"); tab_ = 7; }
     return 1;
   }
 
   if (tab_ == 4 && developer_mode_) {
     if (developer_page_ == 0) {
-      if (inside(x, y, l + 20, t - 86, l + 280, t - 128)) developer_page_ = 1;
-      else if (inside(x, y, l + 20, t - 140, l + 280, t - 182)) developer_page_ = 2;
-      else if (inside(x, y, l + 20, t - 194, l + 280, t - 236)) reload_config_();
-      else if (inside(x, y, l + 20, t - 248, l + 280, t - 290)) toggle_developer_mode();
-      else if (inside(x, y, l + 10, b + 42, l + 190, b + 14)) tab_ = 7;
+      if (inside(x, y, l + 36, t - 74, l + 160, t - 98)) { pulse("dev_vehicle"); developer_page_ = 1; }
+      else if (inside(x, y, l + 36, t - 104, l + 160, t - 128)) { pulse("dev_parking"); developer_page_ = 2; }
+      else if (inside(x, y, l + 36, t - 134, l + 160, t - 158)) { pulse("dev_reload"); reload_config_(); }
+      else if (inside(x, y, l + 36, t - 164, l + 160, t - 188)) { pulse("dev_exit"); toggle_developer_mode(); tab_ = 3; }
+      else if (inside(x, y, l + 18, b + 54, l + 148, b + 30)) { pulse("back"); tab_ = 3; }
       return 1;
     }
 
     if (developer_page_ == 1) {
       const auto state = route_editor_.state();
-      if (state == RouteEditorState::Idle) {
-        if (inside(x, y, l + 20, t - 86, l + 240, t - 126))
-          route_editor_.begin_planner(latitude_, longitude_, heading_);
-        else if (route_editor_.saved_route_available() && inside(x, y, l + 260, t - 86, l + 390, t - 126))
-          route_editor_.start_all_saved_routes();
-        else if (route_editor_.saved_route_available() && inside(x, y, l + 410, t - 86, l + 540, t - 126))
-          route_editor_.stop_all_saved_routes();
-      } else if (state == RouteEditorState::Editing) {
-        if (inside(x, y, l + 20, t - 106, l + 140, t - 140)) route_editor_.turn(-15.0f);
-        else if (inside(x, y, l + 152, t - 106, l + 284, t - 140)) route_editor_.move(2.0f);
-        else if (inside(x, y, l + 296, t - 106, l + 416, t - 140)) route_editor_.turn(15.0f);
-        else if (inside(x, y, l + 20, t - 150, l + 140, t - 184)) route_editor_.move(-2.0f);
-        else if (inside(x, y, l + 152, t - 150, l + 284, t - 184)) route_editor_.add_point();
-        else if (inside(x, y, l + 296, t - 150, l + 416, t - 184)) route_editor_.undo_point();
-        else if (inside(x, y, l + 20, t - 194, l + 140, t - 228)) route_editor_.start_test();
-        else if (inside(x, y, l + 152, t - 194, l + 284, t - 228)) route_editor_.save();
-        else if (inside(x, y, l + 296, t - 194, l + 416, t - 228)) route_editor_.cancel();
-      } else if (state == RouteEditorState::Testing &&
-                 inside(x, y, l + 20, t - 112, l + 160, t - 148)) {
-        route_editor_.stop_test();
-      }
-
-      if (inside(x, y, l + 20, b + 132, l + 160, b + 98)) toggle_vehicle_spin_();
-      else if (inside(x, y, l + 174, b + 132, l + 284, b + 98)) {
-        vehicle_steering_ = std::max(-1.0f, vehicle_steering_ - 0.25f);
-        set_vehicle_steering_(vehicle_steering_);
-      } else if (inside(x, y, l + 296, b + 132, l + 406, b + 98)) {
-        vehicle_steering_ = 0.0f;
-        set_vehicle_steering_(vehicle_steering_);
-      } else if (inside(x, y, l + 418, b + 132, l + 528, b + 98)) {
-        vehicle_steering_ = std::min(1.0f, vehicle_steering_ + 0.25f);
-        set_vehicle_steering_(vehicle_steering_);
-      } else if (inside(x, y, l + 20, b + 58, l + 198, b + 28)) {
-        developer_page_ = 0;
-      }
+      if (inside(x, y, l + 36, t - 74, l + 132, t - 98)) { pulse("veh_plan"); if (state == RouteEditorState::Idle) route_editor_.begin_planner(latitude_, longitude_, heading_); }
+      else if (inside(x, y, l + 36, t - 104, l + 102, t - 128)) { pulse("veh_test"); if (state == RouteEditorState::Editing) route_editor_.start_test(); }
+      else if (inside(x, y, l + 36, t - 134, l + 102, t - 158)) { pulse("veh_save"); if (state == RouteEditorState::Editing) route_editor_.save(); }
+      else if (inside(x, y, l + 36, t - 164, l + 132, t - 188)) { pulse("veh_back"); developer_page_ = 0; }
+      else if (inside(x, y, l + 220, b + 82, l + 278, b + 58)) { pulse("veh_spin"); toggle_vehicle_spin_(); }
+      else if (inside(x, y, l + 220, b + 52, l + 278, b + 28)) { pulse("veh_delete"); route_editor_.cancel(); }
       return 1;
     }
 
     if (developer_page_ == 2) {
-      if (vdgs_editor_.state() == VdgsEditorState::Placing) {
-        if (inside(x, y, l + 20, t - 106, l + 140, t - 140)) vdgs_editor_.move_side(-1.0f);
-        else if (inside(x, y, l + 152, t - 106, l + 284, t - 140)) vdgs_editor_.move_forward(1.0f);
-        else if (inside(x, y, l + 296, t - 106, l + 416, t - 140)) vdgs_editor_.move_side(1.0f);
-        else if (inside(x, y, l + 20, t - 150, l + 140, t - 184)) vdgs_editor_.adjust_altitude(-0.1f);
-        else if (inside(x, y, l + 152, t - 150, l + 284, t - 184)) vdgs_editor_.move_forward(-1.0f);
-        else if (inside(x, y, l + 296, t - 150, l + 416, t - 184)) vdgs_editor_.adjust_altitude(0.1f);
-        else if (inside(x, y, l + 20, t - 194, l + 140, t - 228)) vdgs_editor_.turn(-5.0f);
-        else if (inside(x, y, l + 152, t - 194, l + 284, t - 228)) {
-          if (vdgs_editor_.save()) reload_config_();
-        } else if (inside(x, y, l + 296, t - 194, l + 416, t - 228)) vdgs_editor_.turn(5.0f);
-        else if (inside(x, y, l + 20, t - 238, l + 140, t - 272)) vdgs_editor_.adjust_acquisition_distance(-10.0f);
-        else if (inside(x, y, l + 152, t - 238, l + 284, t - 272)) vdgs_editor_.adjust_corridor_half_width(-1.0f);
-        else if (inside(x, y, l + 296, t - 238, l + 416, t - 272)) vdgs_editor_.adjust_corridor_half_width(1.0f);
-        else if (inside(x, y, l + 428, t - 238, l + 548, t - 272)) vdgs_editor_.adjust_acquisition_distance(10.0f);
-        else if (inside(x, y, l + 20, t - 282, l + 140, t - 316)) vdgs_editor_.cancel();
-      } else if (inside(x, y, l + 20, t - 86, l + 250, t - 128)) {
-        vdgs_editor_.begin(latitude_, longitude_, heading_);
-      }
-      if (inside(x, y, l + 20, b + 58, l + 198, b + 28)) developer_page_ = 0;
+      if (inside(x, y, l + 36, t - 74, l + 132, t - 98)) { pulse("park_new"); if (vdgs_editor_.state() != VdgsEditorState::Placing) vdgs_editor_.begin(latitude_, longitude_, heading_); }
+      else if (inside(x, y, l + 36, t - 104, l + 112, t - 128)) { pulse("park_snap"); reload_config_(); }
+      else if (inside(x, y, l + 36, b + 82, l + 104, b + 58)) { pulse("park_delete"); vdgs_editor_.cancel(); }
+      else if (inside(x, y, l + 36, b + 52, l + 132, b + 28)) { pulse("park_back"); developer_page_ = 0; }
       return 1;
     }
   }

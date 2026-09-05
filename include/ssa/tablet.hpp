@@ -35,6 +35,7 @@ private:
   static int mouse(XPLMWindowID id, int x, int y, XPLMMouseStatus status, void* refcon);
   void draw_impl();
   int mouse_impl(int x, int y, XPLMMouseStatus status);
+  void pulse(const char* id);
   XPLMWindowID window_{};
   SceneryManager& scenery_;
   RouteEditor& route_editor_;
@@ -57,6 +58,10 @@ private:
   std::string selected_jetway_id_;
   int developer_page_{};
   int tab_{7};
+  float open_anim_{1.0f};
+  float last_draw_time_{-1.0f};
+  float pulse_start_time_{-1000.0f};
+  std::string pulse_button_id_;
 };
 
 } // namespace ssa
