@@ -368,8 +368,12 @@ void Tablet::draw_impl() {
     }
 
     if (developer_page_ == 1) {
+      const auto route_state = route_editor_.state();
       button(l + 36, t - 74, l + 132, t - 98, "PLAN NEW ROUTE", "veh_plan", true);
-      button(l + 36, t - 104, l + 102, t - 128, "TEST", "veh_test");
+      if (route_state == RouteEditorState::Testing)
+        button(l + 36, t - 104, l + 132, t - 128, "STOP TEST", "veh_test", false, true);
+      else
+        button(l + 36, t - 104, l + 132, t - 128, "TEST ROUTE", "veh_test", true);
       button(l + 36, t - 134, l + 102, t - 158, "SAVE", "veh_save");
       button(l + 36, t - 164, l + 132, t - 188, "BACK TO DEV", "veh_back", true);
       int fy = t - 74;
@@ -508,9 +512,11 @@ int Tablet::mouse_impl(int x, int y, XPLMMouseStatus status) {
     if (developer_page_ == 1) {
       const auto state = route_editor_.state();
       if (inside(x, y, l + 36, t - 74, l + 132, t - 98)) { pulse("veh_plan"); if (state == RouteEditorState::Idle) route_editor_.begin_planner(latitude_, longitude_, heading_); }
-      else if (inside(x, y, l + 36, t - 104, l + 102, t - 128)) {
+      else if (inside(x, y, l + 36, t - 104, l + 132, t - 128)) {
         pulse("veh_test");
-        if (state == RouteEditorState::Editing || state == RouteEditorState::Planning)
+        if (state == RouteEditorState::Testing)
+          route_editor_.stop_test();
+        else if (state == RouteEditorState::Editing || state == RouteEditorState::Planning)
           route_editor_.start_test();
       }
       else if (inside(x, y, l + 36, t - 134, l + 102, t - 158)) { pulse("veh_save"); if (state == RouteEditorState::Editing) route_editor_.save(); }
