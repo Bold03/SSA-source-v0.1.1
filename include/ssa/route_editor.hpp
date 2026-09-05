@@ -93,6 +93,8 @@ public:
   size_t point_count() const { return points_.size(); }
   float heading() const { return current_.heading; }
   bool loop_enabled() const { return loop_enabled_; }
+  float test_speed_mps() const { return current_speed_mps_; }
+  bool traffic_visible() const { return traffic_visible_; }
   size_t model_count() const { return model_ids_.size(); }
   bool saved_route_available() const { return !traffic_routes_.empty(); }
   size_t saved_route_count() const { return traffic_routes_.size(); }

@@ -1541,10 +1541,15 @@ void RouteEditor::update_traffic_vehicle(TrafficRoute& route,
 
 void RouteEditor::update(float elapsed_seconds) {
   update_planner_drag();
+
+  // Airport presence filtering applies to saved/autostart traffic only.
+  // The developer preview/test vehicle must keep updating even when the
+  // aircraft is outside the configured vehicle presence radius; otherwise
+  // the preview remains visible but freezes in place during TEST.
   if (!traffic_visible_) {
     hide_traffic_instances();
-    return;
   }
+
   if (route_load_pending_) {
     route_load_delay_seconds_ += std::clamp(elapsed_seconds, 0.0f, 0.25f);
     if (route_load_delay_seconds_ < 1.0f) return;
@@ -1559,9 +1564,13 @@ void RouteEditor::update(float elapsed_seconds) {
   }
   const float traffic_elapsed = std::clamp(elapsed_seconds, 0.0f, 0.10f);
   const float traffic_clock_elapsed = std::clamp(elapsed_seconds, 0.0f, 1.0f);
-  for (auto& route : traffic_routes_)
-    if (route.running)
-      update_traffic_route(route, traffic_elapsed, traffic_clock_elapsed);
+  if (traffic_visible_) {
+    for (auto& route : traffic_routes_)
+      if (route.running)
+        update_traffic_route(route, traffic_elapsed, traffic_clock_elapsed);
+  }
+
+  // Developer route tests are intentionally independent of traffic_visible_.
   if (state_ != RouteEditorState::Testing || test_index_ >= test_points_.size()) return;
   elapsed_seconds = std::clamp(elapsed_seconds, 0.0f, 0.10f);
   if (elapsed_seconds <= 0.0f) return;

@@ -375,6 +375,13 @@ void Tablet::draw_impl() {
       int fy = t - 74;
       const char* fields[] = {"ROUTE", "MODEL", "SPEED", "LOOP", "HEADING", "STATUS"};
       for (int i = 0; i < 6; ++i, fy -= 30) button(l + 220, fy, l + 318, fy - 24, fields[i], fields[i]);
+      char live_status[220];
+      std::snprintf(live_status, sizeof(live_status),
+                    "%s | %.1f KM/H | %s",
+                    route_editor_.status().c_str(),
+                    route_editor_.test_speed_mps() * 3.6f,
+                    route_editor_.traffic_visible() ? "AIRPORT ACTIVE" : "TEST OVERRIDE");
+      label(l + 340, t - 88, live_status, 0.72f, 0.78f, 0.84f);
       button(l + 220, b + 82, l + 278, b + 58, "TEST SPIN", "veh_spin");
       button(l + 220, b + 52, l + 278, b + 28, "DELETE", "veh_delete", false, true);
       return;
