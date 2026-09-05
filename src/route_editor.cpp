@@ -1,5 +1,6 @@
 #include "ssa/route_editor.hpp"
 #include <XPLMGraphics.h>
+#include <XPLMUtilities.h>
 #include <nlohmann/json.hpp>
 #include <algorithm>
 #include <cmath>

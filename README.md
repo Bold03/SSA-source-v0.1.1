@@ -1,3 +1,5 @@
+# SSA 0.32.5 - Windows Build Fix
+
 # SSA 0.32.4 - Route Save Path Fix
 
 # SSA 0.32.3 - Multi-Airport Vehicle Loader
