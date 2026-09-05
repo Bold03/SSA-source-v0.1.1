@@ -1,3 +1,5 @@
+# SSA 0.32.0 - Classic UI Refinement
+
 # SSA 0.31.0 - Altitude Vehicle Visibility
 
 # SSA 0.30.4 - Vehicle Status Cleanup

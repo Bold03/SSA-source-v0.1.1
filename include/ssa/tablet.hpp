@@ -36,6 +36,7 @@ private:
   void draw_impl();
   int mouse_impl(int x, int y, XPLMMouseStatus status);
   void pulse(const char* id);
+  void transition();
   XPLMWindowID window_{};
   SceneryManager& scenery_;
   RouteEditor& route_editor_;
