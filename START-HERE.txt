@@ -1,4 +1,4 @@
-SSA 0.29.0 - QUICK START (WINDOWS)
+SSA 0.31.0 - QUICK START (WINDOWS)
 =================================
 
 You do NOT need Visual Studio.

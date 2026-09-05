@@ -107,8 +107,11 @@ bool RouteEditor::load(const std::string& xplane_root) {
       if (!root.contains("vehicle_models") || !root.at("vehicle_models").is_array() ||
           root.at("vehicle_models").empty()) continue;
       airport_id_ = root.value("airport", std::string("----"));
-      vehicle_presence_radius_m_ = std::clamp(
-          root.value("vehicle_presence_radius_m", 8000.0f), 1000.0f, 50000.0f);
+      // Saved traffic is now controlled by aircraft AGL instead of a fixed
+      // airport-radius cutoff. 5,000 ft is the default and can be changed in
+      // ssa.json (for example to 10,000 ft).
+      vehicle_hide_agl_ft_ = std::clamp(
+          root.value("vehicle_hide_agl_ft", 5000.0f), 500.0f, 20000.0f);
       airport_reference_valid_ = false;
       if (root.contains("objects") && root.at("objects").is_array()) {
         for (const auto& configured_object : root.at("objects")) {
@@ -473,21 +476,22 @@ void RouteEditor::hide_traffic_instances() {
   }
 }
 
-void RouteEditor::set_aircraft_position(double latitude, double longitude) {
+void RouteEditor::set_aircraft_position(double latitude, double longitude,
+                                         float agl_m) {
   aircraft_lat_ = latitude;
   aircraft_lon_ = longitude;
-  if (!airport_reference_valid_) return;
-  const bool visible = geographic_distance_m(latitude, longitude,
-                                              airport_reference_lat_,
-                                              airport_reference_lon_) <=
-                       static_cast<double>(vehicle_presence_radius_m_);
+  aircraft_agl_m_ = std::max(0.0f, agl_m);
+
+  const float agl_ft = aircraft_agl_m_ * 3.280839895f;
+  const bool visible = agl_ft < vehicle_hide_agl_ft_;
   if (visible == traffic_visible_) return;
+
   traffic_visible_ = visible;
   if (!traffic_visible_) {
     hide_traffic_instances();
-    status_ = "Airport left | Ground vehicles hidden";
+    status_ = "High altitude | Saved traffic hidden";
   } else {
-    status_ = "Airport active | Ground vehicles restored";
+    status_ = "Low altitude | Saved traffic available";
   }
 }
 
@@ -1542,10 +1546,9 @@ void RouteEditor::update_traffic_vehicle(TrafficRoute& route,
 void RouteEditor::update(float elapsed_seconds) {
   update_planner_drag();
 
-  // Airport presence filtering applies to saved/autostart traffic only.
-  // The developer preview/test vehicle must keep updating even when the
-  // aircraft is outside the configured vehicle presence radius; otherwise
-  // the preview remains visible but freezes in place during TEST.
+  // Altitude filtering applies to saved/autostart traffic only.
+  // The developer preview/test vehicle keeps updating above the hide altitude
+  // so scenery authors can test routes at any time.
   if (!traffic_visible_) {
     hide_traffic_instances();
   }

@@ -33,7 +33,7 @@ ssa::FloatDataRef* vdgs_slow_ref{};
 ssa::FloatDataRef* vdgs_stop_ref{};
 ssa::FloatDataRef* vdgs_lateral_ref{};
 ssa::FloatDataRef* vdgs_distance_ref{};
-XPLMDataRef lat_ref{}, lon_ref{}, heading_ref{}, icao_ref{}, door_open_ref{}, prop_ref{},
+XPLMDataRef lat_ref{}, lon_ref{}, heading_ref{}, agl_ref{}, icao_ref{}, door_open_ref{}, prop_ref{},
     onground_ref{}, groundspeed_ref{}, aircraft_length_ref{}, gear_x_ref{},
     gear_z_ref{};
 XPLMCommandRef tablet_command{};
@@ -651,8 +651,9 @@ float flight_loop(float elapsed, float, int, void*) {
   const double lat = lat_ref ? XPLMGetDatad(lat_ref) : 0.0;
   const double lon = lon_ref ? XPLMGetDatad(lon_ref) : 0.0;
   const float aircraft_heading = heading_ref ? XPLMGetDataf(heading_ref) : 0.0f;
+  const float aircraft_agl_m = agl_ref ? std::max(0.0f, XPLMGetDataf(agl_ref)) : 0.0f;
   tablet->set_position(lat, lon, aircraft_heading);
-  if (route_editor) route_editor->set_aircraft_position(lat, lon);
+  if (route_editor) route_editor->set_aircraft_position(lat, lon, aircraft_agl_m);
   update_vdgs(lat, lon);
   if (vdgs_editor) vdgs_editor->update();
   if (vehicle_spin_test && vehicle_spin_ref) {
@@ -742,6 +743,7 @@ PLUGIN_API int XPluginStart(char* name, char* signature, char* description) {
     lat_ref = XPLMFindDataRef("sim/flightmodel/position/latitude");
     lon_ref = XPLMFindDataRef("sim/flightmodel/position/longitude");
     heading_ref = XPLMFindDataRef("sim/flightmodel/position/psi");
+    agl_ref = XPLMFindDataRef("sim/flightmodel/position/y_agl");
     icao_ref = XPLMFindDataRef("sim/aircraft/view/acf_ICAO");
     door_open_ref = XPLMFindDataRef("sim/cockpit2/switches/door_open");
     prop_ref = XPLMFindDataRef("sim/aircraft/prop/acf_en_type");
@@ -776,7 +778,7 @@ PLUGIN_API int XPluginStart(char* name, char* signature, char* description) {
     XPLMAppendMenuItem(menu, "Toggle nearest hangar", reinterpret_cast<void*>(3), 0);
     XPLMAppendMenuItem(menu, "Toggle nearest jetway", reinterpret_cast<void*>(4), 0);
     XPLMRegisterFlightLoopCallback(flight_loop, -1.0f, nullptr);
-    log("SSA 0.30.3 started: " + std::to_string(scenery->objects().size()) +
+    log("SSA 0.31.0 started: " + std::to_string(scenery->objects().size()) +
         " object(s), L1 door dataref " +
         (door_open_ref ? "detected" : "not found"));
     return 1;

@@ -67,7 +67,7 @@ public:
   void schedule_saved_route_load();
   void unload();
   void update(float elapsed_seconds);
-  void set_aircraft_position(double latitude, double longitude);
+  void set_aircraft_position(double latitude, double longitude, float agl_m);
 
   void create_route(double latitude, double longitude, float heading);
   void begin_planner(double latitude, double longitude, float heading);
@@ -95,6 +95,8 @@ public:
   bool loop_enabled() const { return loop_enabled_; }
   float test_speed_mps() const { return current_speed_mps_; }
   bool traffic_visible() const { return traffic_visible_; }
+  float aircraft_agl_ft() const { return aircraft_agl_m_ * 3.280839895f; }
+  float vehicle_hide_agl_ft() const { return vehicle_hide_agl_ft_; }
   size_t model_count() const { return model_ids_.size(); }
   bool saved_route_available() const { return !traffic_routes_.empty(); }
   size_t saved_route_count() const { return traffic_routes_.size(); }
@@ -161,7 +163,8 @@ private:
   double airport_reference_lon_{};
   double aircraft_lat_{};
   double aircraft_lon_{};
-  float vehicle_presence_radius_m_{8000.0f};
+  float aircraft_agl_m_{};
+  float vehicle_hide_agl_ft_{5000.0f};
   bool airport_reference_valid_{};
   bool traffic_visible_{true};
   std::string route_path_;

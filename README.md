@@ -1,3 +1,7 @@
+# SSA 0.31.0 - Altitude Vehicle Visibility
+
+# SSA 0.30.4 - Vehicle Status Cleanup
+
 # SSA 0.30.3 - Stop Test Button
 
 # SSA 0.30.2 - Vehicle Test Movement Fix
@@ -70,7 +74,7 @@ Developer Mode is OFF by default. Enabling it in Settings unlocks:
 
 - Dynamic scenery datarefs are loaded from `ssa.json`.
 - Vehicle routes are stored in `ssa_routes.json`.
-- `vehicle_presence_radius_m` controls how far from the airport SSA background traffic remains active.
+- `vehicle_hide_agl_ft` controls the AGL altitude where saved SSA ground traffic is hidden (default 5000 ft).
 - `tools/SSA-Dataref-Generator.html` helps generate sanitized SSA datarefs.
 - `tools/SSA-JSON-Builder.html` is an offline editor for `ssa.json`.
 
