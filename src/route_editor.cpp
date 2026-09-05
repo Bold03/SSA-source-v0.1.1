@@ -1870,8 +1870,16 @@ void RouteEditor::update(float elapsed_seconds) {
 }
 
 bool RouteEditor::save() {
+  // SAVE must also work while the top-down planner is still open.  The
+  // planner uses the Planning state, so close it first which returns us to
+  // Editing before serializing the route.
+  const bool was_planning = state_ == RouteEditorState::Planning;
+  if (was_planning) close_planner();
+
   if (state_ != RouteEditorState::Editing || points_.size() < 2) {
     status_ = "Add at least two anchors";
+    if (was_planning && state_ == RouteEditorState::Editing && !points_.empty())
+      open_planner();
     return false;
   }
   if (loop_enabled_ && points_.size() < 3) {
@@ -1929,9 +1937,19 @@ bool RouteEditor::save() {
         model_id_, loop_enabled_, editing_route_autostart_,
         editing_route_speed_mps_, editing_bus_count_, editing_spawn_interval_s_,
         points_));
-    std::ofstream output(route_path_);
+    if (route_path_.empty())
+      throw std::runtime_error("Route path is empty");
+    const fs::path output_path(route_path_);
+    if (!output_path.parent_path().empty())
+      fs::create_directories(output_path.parent_path());
+
+    std::ofstream output(route_path_, std::ios::out | std::ios::trunc);
     output << route.dump(2) << '\n';
-    if (!output) throw std::runtime_error("Cannot write route file");
+    output.flush();
+    if (!output) throw std::runtime_error("Cannot write route file: " + route_path_);
+
+    const std::string log_line = "[SSA] Route saved: " + route_path_ + "\n";
+    XPLMDebugString(log_line.c_str());
     const std::string saved_id = editing_route_id_;
     const std::string saved_label = editing_route_label_;
     const bool resume_manually_started_route =
@@ -1967,6 +1985,10 @@ bool RouteEditor::save() {
     return true;
   } catch (const std::exception& e) {
     status_ = e.what();
+    const std::string log_line = "[SSA] Route save FAILED: " + status_ + " | " + route_path_ + "\n";
+    XPLMDebugString(log_line.c_str());
+    if (was_planning && state_ == RouteEditorState::Editing && !points_.empty())
+      open_planner();
     return false;
   }
 }

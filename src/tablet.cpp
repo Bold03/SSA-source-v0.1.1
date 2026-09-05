@@ -706,7 +706,8 @@ int Tablet::mouse_impl(int x, int y, XPLMMouseStatus status) {
       else if (inside(x, y, l + 28, t - 134, l + 92, t - 158)) {
         pulse("veh_save");
         delete_route_confirm_ = false;
-        if (state == RouteEditorState::Editing) route_editor_.save();
+        if (state == RouteEditorState::Editing || state == RouteEditorState::Planning)
+          route_editor_.save();
       }
       else if (inside(x, y, l + 28, t - 164, l + 140, t - 188)) {
         pulse("veh_back");
