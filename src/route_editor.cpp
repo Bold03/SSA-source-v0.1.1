@@ -1176,6 +1176,10 @@ void RouteEditor::start_test() {
   state_ = RouteEditorState::Testing;
   status_ = "Route test running";
   show(spin_, 0.0f);
+  // If TEST was started while the top-down planner is open, close only the
+  // overlay/camera control while keeping the editor in Testing state.
+  // The planner is automatically restored after the test finishes.
+  if (return_to_planner_after_test_) close_planner();
 }
 
 void RouteEditor::start_saved_route(size_t index) {

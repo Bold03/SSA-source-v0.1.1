@@ -501,7 +501,11 @@ int Tablet::mouse_impl(int x, int y, XPLMMouseStatus status) {
     if (developer_page_ == 1) {
       const auto state = route_editor_.state();
       if (inside(x, y, l + 36, t - 74, l + 132, t - 98)) { pulse("veh_plan"); if (state == RouteEditorState::Idle) route_editor_.begin_planner(latitude_, longitude_, heading_); }
-      else if (inside(x, y, l + 36, t - 104, l + 102, t - 128)) { pulse("veh_test"); if (state == RouteEditorState::Editing) route_editor_.start_test(); }
+      else if (inside(x, y, l + 36, t - 104, l + 102, t - 128)) {
+        pulse("veh_test");
+        if (state == RouteEditorState::Editing || state == RouteEditorState::Planning)
+          route_editor_.start_test();
+      }
       else if (inside(x, y, l + 36, t - 134, l + 102, t - 158)) { pulse("veh_save"); if (state == RouteEditorState::Editing) route_editor_.save(); }
       else if (inside(x, y, l + 36, t - 164, l + 132, t - 188)) { pulse("veh_back"); developer_page_ = 0; }
       else if (inside(x, y, l + 220, b + 82, l + 278, b + 58)) { pulse("veh_spin"); toggle_vehicle_spin_(); }
