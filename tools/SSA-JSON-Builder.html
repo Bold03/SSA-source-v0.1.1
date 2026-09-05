@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>SSA JSON Builder</title>
+<style>
+:root{--bg:#09111a;--panel:#101c28;--panel2:#162635;--line:#274052;--cyan:#33f3ff;--green:#44ffad;--amber:#ffc857;--red:#ff6b6b;--text:#d8e7f2;--muted:#8fa7b8}
+*{box-sizing:border-box}body{margin:0;background:linear-gradient(135deg,#071018,#0c1722);color:var(--text);font-family:Inter,Segoe UI,Arial,sans-serif;min-height:100vh}.app{display:grid;grid-template-columns:270px 1fr;min-height:100vh}.side{background:#0b1620;border-right:1px solid var(--line);padding:22px 16px;position:sticky;top:0;height:100vh}.brand{font-weight:800;letter-spacing:.12em;color:var(--cyan);font-size:18px}.sub{font-size:11px;color:var(--muted);margin:5px 0 24px}.nav button{width:100%;text-align:left;padding:12px;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--muted);margin:4px 0;cursor:pointer}.nav button.active,.nav button:hover{background:#132332;color:var(--cyan);border-color:#244255}.actions{position:absolute;left:16px;right:16px;bottom:18px;display:grid;gap:8px}button.primary{background:var(--cyan);color:#001015;border:0;font-weight:800}.btn{padding:11px 14px;border-radius:8px;border:1px solid var(--line);background:#132332;color:var(--text);cursor:pointer}.btn:hover{filter:brightness(1.12)}.content{padding:28px;max-width:1320px;width:100%;margin:auto}.topbar{display:flex;justify-content:space-between;gap:16px;align-items:flex-end;margin-bottom:20px}.title{font-size:28px;font-weight:800}.status{color:var(--green);font-size:12px;border:1px solid #1d5a46;background:#0b211b;padding:8px 12px;border-radius:7px}.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;margin-bottom:16px;box-shadow:0 16px 50px #0004}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}label{display:block;font-size:11px;color:#9bb3c4;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px}input,select,textarea{width:100%;background:#09131c;border:1px solid #294253;color:var(--text);padding:10px;border-radius:7px;outline:none}input:focus,select:focus,textarea:focus{border-color:var(--cyan)}.section{display:none}.section.active{display:block}.rowhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}.rowhead h2{margin:0;font-size:17px;color:var(--cyan)}.item{border:1px solid #2b4354;background:#0b1721;border-radius:9px;padding:14px;margin:10px 0}.itemtop{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}.badge{font-size:10px;padding:4px 7px;border-radius:5px;background:#173042;color:var(--cyan)}.danger{color:#ff9797;border-color:#62343a;background:#29151a}.json{font-family:Consolas,monospace;min-height:560px;white-space:pre;tab-size:2}.hint{color:var(--muted);font-size:12px;line-height:1.5}.warn{border-left:3px solid var(--amber);padding:10px 12px;background:#251f11;color:#f6d68d;font-size:12px;border-radius:5px}.ok{border-left:3px solid var(--green);padding:10px 12px;background:#0e251c;color:#8fffc6;font-size:12px;border-radius:5px}.toolbar{display:flex;gap:8px;flex-wrap:wrap}.file{display:none}@media(max-width:850px){.app{grid-template-columns:1fr}.side{position:relative;height:auto}.actions{position:static;margin-top:16px}.content{padding:16px}.grid,.grid3{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand">SSA BUILDER</div>
+    <div class="sub">Scenery Service Animation • ssa.json editor</div>
+    <div class="nav">
+      <button class="active" data-tab="general">01 / GENERAL</button>
+      <button data-tab="objects">02 / OBJECTS</button>
+      <button data-tab="vehicles">03 / VEHICLE MODELS</button>
+      <button data-tab="vdgs">04 / VDGS MODELS</button>
+      <button data-tab="preview">05 / JSON PREVIEW</button>
+    </div>
+    <div class="actions">
+      <button class="btn" id="importBtn">IMPORT SSA.JSON</button>
+      <input class="file" id="fileInput" type="file" accept="application/json,.json" />
+      <button class="btn primary" id="downloadBtn">DOWNLOAD SSA.JSON</button>
+    </div>
+  </aside>
+  <main class="content">
+    <div class="topbar"><div><div class="title">SSA Airport Configuration</div><div class="hint">Create the file that goes inside your airport's Custom Scenery folder.</div></div><div class="status" id="status">READY</div></div>
+
+    <section class="section active" id="general">
+      <div class="panel">
+        <div class="rowhead"><h2>Airport</h2></div>
+        <div class="grid3">
+          <div><label>ICAO / Airport ID</label><input id="airport" value="WIII" maxlength="8" placeholder="WIII"></div>
+          <div><label>Schema</label><input id="schema" type="number" value="1" min="1"></div>
+          <div><label>Vehicle presence radius (m)</label><input id="presence" type="number" value="8000" min="1000" max="50000"></div>
+        </div>
+        <p class="hint">Ground traffic is only rendered while the aircraft is within this radius of the SSA airport. Leaving the airport hides all SSA vehicles automatically.</p>
+      </div>
+      <div class="panel"><div class="rowhead"><h2>Quick start</h2></div><div class="ok">1. Enter ICAO → 2. Add Hangars / Jetways / VDGS → 3. Add vehicle OBJ models if needed → 4. Download <b>ssa.json</b> and place it beside the airport scenery.</div></div>
+    </section>
+
+    <section class="section" id="objects">
+      <div class="panel"><div class="rowhead"><h2>Service Objects</h2><button class="btn" onclick="addObject('hangar')">+ ADD OBJECT</button></div><div class="hint">Hangar, Jetway, VDGS parking display, vehicle animation, ground staff, or other SSA service objects.</div><div id="objectList"></div></div>
+    </section>
+
+    <section class="section" id="vehicles">
+      <div class="panel"><div class="rowhead"><h2>Vehicle Models</h2><button class="btn" onclick="addVehicle()">+ ADD VEHICLE</button></div><div class="hint">OBJ models used by the SSA route editor / apron traffic system.</div><div id="vehicleList"></div></div>
+    </section>
+
+    <section class="section" id="vdgs">
+      <div class="panel"><div class="rowhead"><h2>VDGS Models</h2><button class="btn" onclick="addVdgsModel()">+ ADD VDGS MODEL</button></div><div id="vdgsList"></div></div>
+    </section>
+
+    <section class="section" id="preview">
+      <div class="panel"><div class="rowhead"><h2>JSON Preview</h2><div class="toolbar"><button class="btn" id="copyBtn">COPY</button><button class="btn" id="validateBtn">VALIDATE</button></div></div><textarea class="json" id="jsonPreview" spellcheck="false"></textarea><div id="validation" style="margin-top:10px"></div></div>
+    </section>
+  </main>
+</div>
+<script>
+const state={objects:[],vehicle_models:[],vdgs_models:[]};
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function num(v,d=0){const n=Number(v);return Number.isFinite(n)?n:d}
+function clean(o){if(Array.isArray(o))return o.map(clean);if(o&&typeof o==='object'){for(const k of Object.keys(o)){if(o[k]===undefined||o[k]===''||o[k]===null)delete o[k];else o[k]=clean(o[k])}}return o}
+function build(){const root={schema:Math.max(1,Math.round(num($('schema').value,1))),airport:$('airport').value.trim().toUpperCase()||'----',vehicle_presence_radius_m:Math.max(1000,num($('presence').value,8000)),vdgs_models:state.vdgs_models,vehicle_models:state.vehicle_models,objects:state.objects};if(!root.vdgs_models.length)delete root.vdgs_models;if(!root.vehicle_models.length)delete root.vehicle_models;return clean(JSON.parse(JSON.stringify(root)))}
+function refreshPreview(){ $('jsonPreview').value=JSON.stringify(build(),null,2); $('status').textContent='READY • '+state.objects.length+' OBJECT(S)'; }
+function objectTemplate(o,i){const isJet=o.type==='jetway',isVdgs=o.type==='parking_display';return `<div class="item"><div class="itemtop"><span class="badge">OBJECT ${i+1}</span><button class="btn danger" onclick="removeObject(${i})">REMOVE</button></div><div class="grid3"><div><label>Type</label><select onchange="setObj(${i},'type',this.value)">${['hangar','jetway','parking_display','vehicle','ground_staff'].map(x=>`<option ${o.type===x?'selected':''}>${x}</option>`).join('')}</select></div><div><label>ID</label><input value="${esc(o.id)}" oninput="setObj(${i},'id',this.value)"></div><div><label>Label</label><input value="${esc(o.label)}" oninput="setObj(${i},'label',this.value)"></div><div><label>Latitude</label><input type="number" step="0.0000001" value="${o.latitude??0}" oninput="setObjNum(${i},'latitude',this.value)"></div><div><label>Longitude</label><input type="number" step="0.0000001" value="${o.longitude??0}" oninput="setObjNum(${i},'longitude',this.value)"></div><div><label>Radius (m)</label><input type="number" value="${o.radius_m??(o.type==='hangar'?2000:35)}" oninput="setObjNum(${i},'radius_m',this.value)"></div><div><label>Speed</label><input type="number" step="0.01" value="${o.speed??0.16}" oninput="setObjNum(${i},'speed',this.value)"></div><div style="grid-column:span 2"><label>Dataref</label><input value="${esc(o.dataref||'')}" placeholder="boldstudio31/ssa/animation/..." oninput="setObj(${i},'dataref',this.value)"></div></div>${isJet?jetwayFields(o,i):''}${isVdgs?vdgsFields(o,i):''}</div>`}
+function jetwayFields(o,i){const k=o.kinematics||{};return `<div class="warn" style="margin-top:12px">JETWAY KINEMATICS</div><div class="grid3" style="margin-top:10px">${[['door_forward_m',12.6],['door_right_m',-1.85],['door_sill_height_m',2.75],['object_heading_deg',90],['root_height_m',6.2116],['pre_dock_clearance_m',1],['connect_tolerance_m',0.05],['max_solution_error_m',0.25]].map(([x,d])=>`<div><label>${x}</label><input type="number" step="0.01" value="${k[x]??d}" oninput="setNested(${i},'kinematics','${x}',this.value)"></div>`).join('')}</div>`}
+function vdgsFields(o,i){const v=o.vdgs||{};return `<div class="warn" style="margin-top:12px">VDGS GUIDANCE</div><div class="grid3" style="margin-top:10px">${[['object_heading_deg',0],['stop_distance_m',18],['acquisition_distance_m',80],['corridor_half_width_m',8],['slow_distance_m',12],['stop_tolerance_m',0.5],['lateral_full_scale_m',3],['lateral_deadband_m',0.15],['lateral_stop_tolerance_m',0.35],['lateral_multiplier',-1]].map(([x,d])=>`<div><label>${x}</label><input type="number" step="0.01" value="${v[x]??d}" oninput="setNested(${i},'vdgs','${x}',this.value)"></div>`).join('')}</div>`}
+function vehicleTemplate(v,i){return `<div class="item"><div class="itemtop"><span class="badge">VEHICLE ${i+1}</span><button class="btn danger" onclick="removeVehicle(${i})">REMOVE</button></div><div class="grid3"><div><label>ID</label><input value="${esc(v.id)}" oninput="setVehicle(${i},'id',this.value)"></div><div><label>Label</label><input value="${esc(v.label)}" oninput="setVehicle(${i},'label',this.value)"></div><div><label>OBJ path</label><input value="${esc(v.object)}" placeholder="object/Bus.obj" oninput="setVehicle(${i},'object',this.value)"></div><div><label>Ground offset (m)</label><input type="number" step="0.001" value="${v.ground_offset_m??0.445}" oninput="setVehicleNum(${i},'ground_offset_m',this.value)"></div><div><label>Heading offset</label><input type="number" value="${v.heading_offset_deg??180}" oninput="setVehicleNum(${i},'heading_offset_deg',this.value)"></div><div><label>Speed m/s</label><input type="number" step="0.1" value="${v.speed_mps??4}" oninput="setVehicleNum(${i},'speed_mps',this.value)"></div><div><label>Max speed m/s</label><input type="number" step="0.1" value="${v.max_speed_mps??9}" oninput="setVehicleNum(${i},'max_speed_mps',this.value)"></div><div><label>Wheelbase (m)</label><input type="number" step="0.1" value="${v.wheelbase_m??7.6}" oninput="setVehicleNum(${i},'wheelbase_m',this.value)"></div><div><label>Max steering deg</label><input type="number" value="${v.max_steering_deg??35}" oninput="setVehicleNum(${i},'max_steering_deg',this.value)"></div></div></div>`}
+function vdgsModelTemplate(v,i){return `<div class="item"><div class="itemtop"><span class="badge">VDGS MODEL ${i+1}</span><button class="btn danger" onclick="removeVdgs(${i})">REMOVE</button></div><div class="grid3"><div><label>ID</label><input value="${esc(v.id)}" oninput="setVdgs(${i},'id',this.value)"></div><div><label>Label</label><input value="${esc(v.label)}" oninput="setVdgs(${i},'label',this.value)"></div><div><label>OBJ path</label><input value="${esc(v.object)}" oninput="setVdgs(${i},'object',this.value)"></div></div></div>`}
+function render(){ $('objectList').innerHTML=state.objects.map(objectTemplate).join('')||'<p class="hint">No objects yet.</p>'; $('vehicleList').innerHTML=state.vehicle_models.map(vehicleTemplate).join('')||'<p class="hint">No vehicle models yet.</p>'; $('vdgsList').innerHTML=state.vdgs_models.map(vdgsModelTemplate).join('')||'<p class="hint">No VDGS models yet.</p>';refreshPreview() }
+window.addObject=t=>{const n=state.objects.length+1;state.objects.push({id:`${t}_${String(n).padStart(2,'0')}`,label:`${t.replace('_',' ').toUpperCase()} ${n}`,type:t,latitude:0,longitude:0,radius_m:t==='hangar'?2000:(t==='parking_display'?90:35),speed:.16,dataref:''});render()};window.removeObject=i=>{state.objects.splice(i,1);render()};window.setObj=(i,k,v)=>{state.objects[i][k]=v;if(k==='type')render();else refreshPreview()};window.setObjNum=(i,k,v)=>{state.objects[i][k]=num(v);refreshPreview()};window.setNested=(i,g,k,v)=>{state.objects[i][g]??={};state.objects[i][g][k]=num(v);refreshPreview()};
+window.addVehicle=()=>{const n=state.vehicle_models.length+1;state.vehicle_models.push({id:`vehicle_${n}`,label:`Apron Vehicle ${n}`,object:'object/vehicle.obj',ground_offset_m:.445,heading_offset_deg:180,speed_mps:4,max_speed_mps:9,wheelbase_m:7.6,max_steering_deg:35});render()};window.removeVehicle=i=>{state.vehicle_models.splice(i,1);render()};window.setVehicle=(i,k,v)=>{state.vehicle_models[i][k]=v;refreshPreview()};window.setVehicleNum=(i,k,v)=>{state.vehicle_models[i][k]=num(v);refreshPreview()};
+window.addVdgsModel=()=>{const n=state.vdgs_models.length+1;state.vdgs_models.push({id:`vdgs_${n}`,label:`SSA VDGS ${n}`,object:'object/VDGS.obj'});render()};window.removeVdgs=i=>{state.vdgs_models.splice(i,1);render()};window.setVdgs=(i,k,v)=>{state.vdgs_models[i][k]=v;refreshPreview()};
+document.querySelectorAll('.nav button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.nav button').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.section').forEach(x=>x.classList.remove('active'));b.classList.add('active');$(b.dataset.tab).classList.add('active');if(b.dataset.tab==='preview')refreshPreview()});['airport','schema','presence'].forEach(id=>$(id).addEventListener('input',refreshPreview));
+$('downloadBtn').onclick=()=>{const blob=new Blob([JSON.stringify(build(),null,2)+'\n'],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='ssa.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),500)};
+$('importBtn').onclick=()=>$('fileInput').click();$('fileInput').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{const r=JSON.parse(await f.text());$('airport').value=r.airport||'----';$('schema').value=r.schema||1;$('presence').value=r.vehicle_presence_radius_m||8000;state.objects=Array.isArray(r.objects)?r.objects:[];state.vehicle_models=Array.isArray(r.vehicle_models)?r.vehicle_models:[];state.vdgs_models=Array.isArray(r.vdgs_models)?r.vdgs_models:[];render();$('status').textContent='IMPORTED'}catch(err){alert('Invalid JSON: '+err.message)}e.target.value=''};
+$('copyBtn').onclick=async()=>{refreshPreview();await navigator.clipboard.writeText($('jsonPreview').value);$('status').textContent='COPIED'};
+$('validateBtn').onclick=()=>{try{const r=JSON.parse($('jsonPreview').value),problems=[];if(!r.airport)problems.push('airport is required');if(!Array.isArray(r.objects))problems.push('objects must be an array');(r.objects||[]).forEach((o,i)=>{for(const k of ['id','type','latitude','longitude'])if(o[k]===undefined||o[k]==='')problems.push(`objects[${i}].${k} is required`)});$('validation').innerHTML=problems.length?`<div class="warn">${problems.join('<br>')}</div>`:'<div class="ok">JSON structure looks valid for SSA.</div>'}catch(e){$('validation').innerHTML=`<div class="warn">JSON syntax error: ${esc(e.message)}</div>`}};
+addObject('hangar');render();
+</script>
+</body>
+</html>

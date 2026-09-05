@@ -3,8 +3,6 @@
 #include "ssa/tablet.hpp"
 #include "ssa/route_editor.hpp"
 #include "ssa/vdgs_editor.hpp"
-#include "ssa/announcement.hpp"
-#include "ssa/announcement_editor.hpp"
 #include <XPLMMenus.h>
 #include <XPLMPlugin.h>
 #include <XPLMProcessing.h>
@@ -24,8 +22,6 @@ std::unique_ptr<ssa::SceneryManager> scenery;
 std::unique_ptr<ssa::Tablet> tablet;
 std::unique_ptr<ssa::RouteEditor> route_editor;
 std::unique_ptr<ssa::VdgsEditor> vdgs_editor;
-std::unique_ptr<ssa::AnnouncementManager> announcements;
-std::unique_ptr<ssa::AnnouncementEditor> announcement_editor;
 ssa::FloatDataRef* automatic_ref{};
 ssa::FloatDataRef* vehicle_spin_ref{};
 ssa::FloatDataRef* vehicle_steering_ref{};
@@ -545,8 +541,6 @@ void reload_scenery() {
     route_editor->schedule_saved_route_load();
   }
   if (vdgs_editor) vdgs_editor->load(root);
-  if (announcements) announcements->load(root);
-  if (announcement_editor) announcement_editor->load(root);
   // A reloaded jetway must be planned again from a known parked state; old
   // channel targets belong to the previous configuration geometry.
   for (auto& object : scenery->objects())
@@ -658,9 +652,9 @@ float flight_loop(float elapsed, float, int, void*) {
   const double lon = lon_ref ? XPLMGetDatad(lon_ref) : 0.0;
   const float aircraft_heading = heading_ref ? XPLMGetDataf(heading_ref) : 0.0f;
   tablet->set_position(lat, lon, aircraft_heading);
+  if (route_editor) route_editor->set_aircraft_position(lat, lon);
   update_vdgs(lat, lon);
   if (vdgs_editor) vdgs_editor->update();
-  if (announcements) announcements->update(frame_elapsed);
   if (vehicle_spin_test && vehicle_spin_ref) {
     float spin = vehicle_spin_ref->value() + frame_elapsed * 0.65f;
     if (spin >= 1.0f) spin -= std::floor(spin);
@@ -739,12 +733,7 @@ PLUGIN_API int XPluginStart(char* name, char* signature, char* description) {
     route_editor->load(root);
     vdgs_editor = std::make_unique<ssa::VdgsEditor>();
     vdgs_editor->load(root);
-    announcements = std::make_unique<ssa::AnnouncementManager>();
-    announcements->load(root);
-    announcement_editor = std::make_unique<ssa::AnnouncementEditor>();
-    announcement_editor->load(root);
     tablet = std::make_unique<ssa::Tablet>(*scenery, *route_editor, *vdgs_editor,
-                                           *announcement_editor,
                                            toggle_auto, reload_scenery,
                                            toggle_tablet_object, select_vdgs,
                                            toggle_vehicle_spin_test,
@@ -787,9 +776,8 @@ PLUGIN_API int XPluginStart(char* name, char* signature, char* description) {
     XPLMAppendMenuItem(menu, "Toggle nearest hangar", reinterpret_cast<void*>(3), 0);
     XPLMAppendMenuItem(menu, "Toggle nearest jetway", reinterpret_cast<void*>(4), 0);
     XPLMRegisterFlightLoopCallback(flight_loop, -1.0f, nullptr);
-    log("SSA 0.24.1 started: " + std::to_string(scenery->objects().size()) +
-        " object(s), " + std::to_string(announcements->source_count()) +
-        " 3D announcement(s), L1 door dataref " +
+    log("SSA 0.29.0 started: " + std::to_string(scenery->objects().size()) +
+        " object(s), L1 door dataref " +
         (door_open_ref ? "detected" : "not found"));
     return 1;
   } catch (const std::exception& e) {
@@ -811,8 +799,6 @@ PLUGIN_API void XPluginStop() {
   if (developer_mode_command) XPLMUnregisterCommandHandler(developer_mode_command, developer_mode_handler, 1, nullptr);
   if (menu) XPLMDestroyMenu(menu);
   tablet.reset();
-  announcements.reset();
-  announcement_editor.reset();
   vdgs_editor.reset();
   route_editor.reset();
   scenery.reset();

@@ -21,6 +21,19 @@ using json = nlohmann::json;
 namespace ssa {
 namespace {
 constexpr float pi = 3.14159265358979323846f;
+constexpr double earth_radius_m = 6371000.0;
+double geographic_distance_m(double lat1, double lon1, double lat2, double lon2) {
+  constexpr double deg = 3.14159265358979323846 / 180.0;
+  const double p1 = lat1 * deg;
+  const double p2 = lat2 * deg;
+  const double dp = (lat2 - lat1) * deg;
+  const double dl = (lon2 - lon1) * deg;
+  const double a = std::sin(dp * 0.5) * std::sin(dp * 0.5) +
+                   std::cos(p1) * std::cos(p2) *
+                       std::sin(dl * 0.5) * std::sin(dl * 0.5);
+  return earth_radius_m * 2.0 *
+         std::atan2(std::sqrt(a), std::sqrt(std::max(0.0, 1.0 - a)));
+}
 float normalize_heading(float value) {
   while (value < 0.0f) value += 360.0f;
   while (value >= 360.0f) value -= 360.0f;
@@ -48,6 +61,11 @@ void RouteEditor::unload() {
   anchor_drag_index_ = -1;
   route_load_pending_ = false;
   route_load_delay_seconds_ = 0.0f;
+  airport_id_.clear();
+  airport_reference_lat_ = 0.0;
+  airport_reference_lon_ = 0.0;
+  airport_reference_valid_ = false;
+  traffic_visible_ = true;
   handle_drag_anchor_ = -1;
   points_.clear();
   model_ids_.clear();
@@ -88,6 +106,20 @@ bool RouteEditor::load(const std::string& xplane_root) {
       const json root = json::parse(input);
       if (!root.contains("vehicle_models") || !root.at("vehicle_models").is_array() ||
           root.at("vehicle_models").empty()) continue;
+      airport_id_ = root.value("airport", std::string("----"));
+      vehicle_presence_radius_m_ = std::clamp(
+          root.value("vehicle_presence_radius_m", 8000.0f), 1000.0f, 50000.0f);
+      airport_reference_valid_ = false;
+      if (root.contains("objects") && root.at("objects").is_array()) {
+        for (const auto& configured_object : root.at("objects")) {
+          if (!configured_object.contains("latitude") ||
+              !configured_object.contains("longitude")) continue;
+          airport_reference_lat_ = configured_object.at("latitude").get<double>();
+          airport_reference_lon_ = configured_object.at("longitude").get<double>();
+          airport_reference_valid_ = true;
+          break;
+        }
+      }
       const auto& model = root.at("vehicle_models").front();
       ground_offset_m_ = model.value("ground_offset_m", 0.445f);
       speed_mps_ = std::clamp(model.value("speed_mps", 4.0f), 0.5f, 15.0f);
@@ -217,9 +249,15 @@ bool RouteEditor::load_saved_route() {
           route_json.value("spawn_interval_s", 45.0f), 5.0f, 300.0f);
       for (const auto& waypoint : route_json.at("waypoints")) {
         if (!waypoint.contains("latitude") || !waypoint.contains("longitude")) continue;
+        const double waypoint_lat = waypoint.at("latitude").get<double>();
+        const double waypoint_lon = waypoint.at("longitude").get<double>();
+        if (!airport_reference_valid_) {
+          airport_reference_lat_ = waypoint_lat;
+          airport_reference_lon_ = waypoint_lon;
+          airport_reference_valid_ = true;
+        }
         double x{}, y{}, z{};
-        XPLMWorldToLocal(waypoint.at("latitude").get<double>(),
-                         waypoint.at("longitude").get<double>(), 0.0, &x, &y, &z);
+        XPLMWorldToLocal(waypoint_lat, waypoint_lon, 0.0, &x, &y, &z);
         RoutePoint point{static_cast<float>(x),
                          terrain_y(static_cast<float>(x), static_cast<float>(z),
                                    static_cast<float>(y)),
@@ -415,6 +453,42 @@ void RouteEditor::show_instance(XPLMInstanceRef instance, const RoutePoint& poin
   draw.heading = normalize_heading(point.heading + heading_offset_deg_);
   const float data[] = {spin, std::clamp(steering * steering_multiplier_, -1.0f, 1.0f)};
   XPLMInstanceSetPosition(instance, &draw, data);
+}
+
+void RouteEditor::hide_traffic_instances() {
+  // XPLM instances do not expose a visibility flag. Moving them far below the
+  // world keeps them out of the scene without destroying/reloading the OBJ.
+  XPLMDrawInfo_t draw{};
+  draw.structSize = sizeof(draw);
+  double x{}, y{}, z{};
+  XPLMWorldToLocal(aircraft_lat_, aircraft_lon_, 0.0, &x, &y, &z);
+  draw.x = static_cast<float>(x);
+  draw.y = static_cast<float>(y - 10000.0);
+  draw.z = static_cast<float>(z);
+  const float data[] = {0.0f, 0.0f};
+  for (auto& route : traffic_routes_) {
+    for (auto& vehicle : route.vehicles) {
+      if (vehicle.instance) XPLMInstanceSetPosition(vehicle.instance, &draw, data);
+    }
+  }
+}
+
+void RouteEditor::set_aircraft_position(double latitude, double longitude) {
+  aircraft_lat_ = latitude;
+  aircraft_lon_ = longitude;
+  if (!airport_reference_valid_) return;
+  const bool visible = geographic_distance_m(latitude, longitude,
+                                              airport_reference_lat_,
+                                              airport_reference_lon_) <=
+                       static_cast<double>(vehicle_presence_radius_m_);
+  if (visible == traffic_visible_) return;
+  traffic_visible_ = visible;
+  if (!traffic_visible_) {
+    hide_traffic_instances();
+    status_ = "Airport left | Ground vehicles hidden";
+  } else {
+    status_ = "Airport active | Ground vehicles restored";
+  }
 }
 
 void RouteEditor::create_route(double latitude, double longitude, float heading) {
@@ -1463,6 +1537,10 @@ void RouteEditor::update_traffic_vehicle(TrafficRoute& route,
 
 void RouteEditor::update(float elapsed_seconds) {
   update_planner_drag();
+  if (!traffic_visible_) {
+    hide_traffic_instances();
+    return;
+  }
   if (route_load_pending_) {
     route_load_delay_seconds_ += std::clamp(elapsed_seconds, 0.0f, 0.25f);
     if (route_load_delay_seconds_ < 1.0f) return;

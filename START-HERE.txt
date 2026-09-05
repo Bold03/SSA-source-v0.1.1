@@ -1,0 +1,28 @@
+SSA 0.29.0 - QUICK START (WINDOWS)
+=================================
+
+You do NOT need Visual Studio.
+
+1. Create a new empty GitHub repository.
+2. Upload every file/folder from this archive into the repository.
+3. Open the GitHub "Actions" tab.
+4. Open "Build SSA" and click "Run workflow" if it did not start automatically.
+5. Wait until the build is green.
+6. Download the artifact named: SSA-win_x64
+7. Extract it.
+8. Put the resulting SSA folder in:
+   X-Plane 11/Resources/plugins/
+   or
+   X-Plane 12/Resources/plugins/
+9. Start X-Plane and open Plugins -> SSA -> Open tablet.
+
+New UI in this version:
+- Classic SSA main menu
+- Hangar menu with OPEN / CLOSE / TOGGLE
+- Jetway menu with CONNECT / DISCONNECT / AUTO
+- Parking/VDGS selection menu
+- Settings with hidden Developer Mode
+- Vehicle Developer menu
+- Parking/VDGS Developer menu
+
+If GitHub Actions shows a red build, send the build log back to ChatGPT.

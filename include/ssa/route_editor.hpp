@@ -67,6 +67,7 @@ public:
   void schedule_saved_route_load();
   void unload();
   void update(float elapsed_seconds);
+  void set_aircraft_position(double latitude, double longitude);
 
   void create_route(double latitude, double longitude, float heading);
   void begin_planner(double latitude, double longitude, float heading);
@@ -104,6 +105,7 @@ private:
   void show(float spin, float steering);
   void show_instance(XPLMInstanceRef instance, const RoutePoint& point,
                      float spin, float steering);
+  void hide_traffic_instances();
   void add_point_at(float x, float z);
   bool load_saved_route();
   void build_bezier_path();
@@ -152,6 +154,14 @@ private:
   size_t selected_model_index_{};
   bool selected_random_model_{};
   std::string scenery_directory_;
+  std::string airport_id_;
+  double airport_reference_lat_{};
+  double airport_reference_lon_{};
+  double aircraft_lat_{};
+  double aircraft_lon_{};
+  float vehicle_presence_radius_m_{8000.0f};
+  bool airport_reference_valid_{};
+  bool traffic_visible_{true};
   std::string route_path_;
   std::string status_{"No vehicle model configured"};
   float ground_offset_m_{0.445f};
