@@ -211,7 +211,9 @@ void Tablet::draw_impl() {
   };
 
   auto footer_back = [&](const char* text = "BACK TO SSA MAIN MENU") {
-    button(l + 18, b + 54, l + 148, b + 30, text, "back", true);
+    // Dedicated footer zone: never share vertical space with action buttons.
+    panel(l + 8, b + 42, r - 8, b + 8);
+    button(l + 18, b + 34, l + 212, b + 12, text, "back", true);
   };
 
   auto title_for_tab = [&]() -> const char* {
@@ -293,9 +295,9 @@ void Tablet::draw_impl() {
     }
     if (hangars.empty()) label(l + 36, y - 8, "NO SSA HANGAR FOUND WITHIN 2 KM", 1.0f, 0.55f, 0.35f);
 
-    button(l + 38, b + 122, l + 98, b + 98, "OPEN", "hang_open");
-    button(l + 38, b + 92, l + 98, b + 68, "CLOSE", "hang_close");
-    button(l + 38, b + 62, l + 98, b + 38, "TOGGLE", "hang_toggle");
+    button(l + 38, b + 150, l + 98, b + 126, "OPEN", "hang_open");
+    button(l + 38, b + 120, l + 98, b + 96, "CLOSE", "hang_close");
+    button(l + 38, b + 90, l + 98, b + 66, "TOGGLE", "hang_toggle");
     footer_back();
 
     if (selected) {
@@ -327,9 +329,9 @@ void Tablet::draw_impl() {
       std::snprintf(row, sizeof(row), "%zu. %s", i + 1, object->label.c_str());
       button(l + 36, y, l + 176, y - 24, row, object->id.c_str(), true);
     }
-    button(l + 38, b + 122, l + 112, b + 98, "CONNECT", "jet_connect");
-    button(l + 38, b + 92, l + 112, b + 68, "DISCONNECT", "jet_disconnect");
-    button(l + 38, b + 62, l + 112, b + 38, automatic_ ? "AUTO ON" : "AUTO OFF", "jet_auto", true);
+    button(l + 38, b + 150, l + 112, b + 126, "CONNECT", "jet_connect");
+    button(l + 38, b + 120, l + 112, b + 96, "DISCONNECT", "jet_disconnect");
+    button(l + 38, b + 90, l + 112, b + 66, automatic_ ? "AUTO ON" : "AUTO OFF", "jet_auto", true);
     footer_back();
     if (selected) {
       char info1[128];
@@ -353,9 +355,9 @@ void Tablet::draw_impl() {
       std::snprintf(row, sizeof(row), "%zu. %s", i + 1, display->label.c_str());
       button(l + 36, y, l + 176, y - 24, row, display->id.c_str(), true);
     }
-    button(l + 38, b + 122, l + 128, b + 98, "ARM VDGS", "park_arm");
-    button(l + 38, b + 92, l + 128, b + 68, "AUTO MODE", "park_auto");
-    button(l + 38, b + 62, l + 128, b + 38, "CLEAR", "park_clear");
+    button(l + 38, b + 150, l + 128, b + 126, "ARM VDGS", "park_arm");
+    button(l + 38, b + 120, l + 128, b + 96, "AUTO MODE", "park_auto");
+    button(l + 38, b + 90, l + 128, b + 66, "CLEAR", "park_clear");
     footer_back();
     if (!displays.empty()) {
       auto* sel = displays.front();
@@ -403,8 +405,8 @@ void Tablet::draw_impl() {
       label(l + 224, t - 126, "NO VDGS FOUND", 1.0f, 0.55f, 0.35f);
     }
 
-    button(l + 38, b + 92, l + 128, b + 68, "AUTO MODE", "vdgs_auto", true);
-    button(l + 38, b + 62, l + 128, b + 38, "CLEAR", "vdgs_clear");
+    button(l + 38, b + 120, l + 128, b + 96, "AUTO MODE", "vdgs_auto", true);
+    button(l + 38, b + 90, l + 128, b + 66, "CLEAR", "vdgs_clear");
     footer_back();
     return;
   }
@@ -416,11 +418,11 @@ void Tablet::draw_impl() {
     button(l + 36, t - 134, l + 106, t - 158, "HANGAR", "set_hangar", true);
     button(l + 36, t - 164, l + 106, t - 188, "PARKING", "set_parking", true);
     button(l + 36, t - 194, l + 106, t - 218, "VDGS", "set_vdgs", true);
-    button(l + 36, b + 108, l + 106, b + 84,
+    button(l + 36, b + 138, l + 106, b + 114,
            automatic_ ? "AUTO ON" : "AUTO OFF", "set_auto");
-    button(l + 36, b + 78, l + 106, b + 54,
+    button(l + 36, b + 108, l + 106, b + 84,
            developer_mode_ ? "DEV ON" : "DEV OFF", "set_dev");
-    button(l + 36, b + 48, l + 106, b + 24, "RELOAD", "set_reload", true);
+    button(l + 36, b + 78, l + 106, b + 54, "RELOAD", "set_reload", true);
     footer_back("BACK TO MAIN MENU");
     label(l + 180, t - 76, "Developer Mode unlocks scenery authoring tools.", 0.74f, 0.74f, 0.74f);
     label(l + 180, t - 98, "Player mode keeps the tablet simple.", 0.74f, 0.74f, 0.74f);
@@ -547,10 +549,10 @@ int Tablet::mouse_impl(int x, int y, XPLMMouseStatus status) {
       }
     }
     ServiceObject* selected = find_by_id(hangars, selected_hangar_id_);
-    if (selected && inside(x, y, l + 38, b + 122, l + 98, b + 98)) { pulse("hang_open"); scenery_.set_uniform_target(*selected, 1.0f); }
-    else if (selected && inside(x, y, l + 38, b + 92, l + 98, b + 68)) { pulse("hang_close"); scenery_.set_uniform_target(*selected, 0.0f); }
-    else if (selected && inside(x, y, l + 38, b + 62, l + 98, b + 38)) { pulse("hang_toggle"); toggle_object_(*selected); }
-    else if (inside(x, y, l + 18, b + 54, l + 148, b + 30)) { pulse("back"); tab_ = 7; transition(); }
+    if (selected && inside(x, y, l + 38, b + 150, l + 98, b + 126)) { pulse("hang_open"); scenery_.set_uniform_target(*selected, 1.0f); }
+    else if (selected && inside(x, y, l + 38, b + 120, l + 98, b + 96)) { pulse("hang_close"); scenery_.set_uniform_target(*selected, 0.0f); }
+    else if (selected && inside(x, y, l + 38, b + 90, l + 98, b + 66)) { pulse("hang_toggle"); toggle_object_(*selected); }
+    else if (inside(x, y, l + 18, b + 34, l + 212, b + 12)) { pulse("back"); tab_ = 7; transition(); }
     return 1;
   }
 
@@ -566,10 +568,10 @@ int Tablet::mouse_impl(int x, int y, XPLMMouseStatus status) {
       }
     }
     ServiceObject* selected = find_by_id(jetways, selected_jetway_id_);
-    if (selected && inside(x, y, l + 38, b + 122, l + 112, b + 98)) { pulse("jet_connect"); scenery_.set_uniform_target(*selected, 1.0f); }
-    else if (selected && inside(x, y, l + 38, b + 92, l + 112, b + 68)) { pulse("jet_disconnect"); scenery_.set_uniform_target(*selected, 0.0f); }
-    else if (inside(x, y, l + 38, b + 62, l + 112, b + 38)) { pulse("jet_auto"); toggle_auto_(); }
-    else if (inside(x, y, l + 18, b + 54, l + 148, b + 30)) { pulse("back"); tab_ = 7; transition(); }
+    if (selected && inside(x, y, l + 38, b + 150, l + 112, b + 126)) { pulse("jet_connect"); scenery_.set_uniform_target(*selected, 1.0f); }
+    else if (selected && inside(x, y, l + 38, b + 120, l + 112, b + 96)) { pulse("jet_disconnect"); scenery_.set_uniform_target(*selected, 0.0f); }
+    else if (inside(x, y, l + 38, b + 90, l + 112, b + 66)) { pulse("jet_auto"); toggle_auto_(); }
+    else if (inside(x, y, l + 18, b + 34, l + 212, b + 12)) { pulse("back"); tab_ = 7; transition(); }
     return 1;
   }
 
@@ -584,10 +586,10 @@ int Tablet::mouse_impl(int x, int y, XPLMMouseStatus status) {
         return 1;
       }
     }
-    if (inside(x, y, l + 38, b + 122, l + 128, b + 98)) { pulse("park_arm"); if (!displays.empty()) select_vdgs_(displays.front()); }
-    else if (inside(x, y, l + 38, b + 92, l + 128, b + 68)) { pulse("park_auto"); select_vdgs_(nullptr); }
-    else if (inside(x, y, l + 38, b + 62, l + 128, b + 38)) { pulse("park_clear"); select_vdgs_(nullptr); }
-    else if (inside(x, y, l + 18, b + 54, l + 148, b + 30)) { pulse("back"); tab_ = 7; transition(); }
+    if (inside(x, y, l + 38, b + 150, l + 128, b + 126)) { pulse("park_arm"); if (!displays.empty()) select_vdgs_(displays.front()); }
+    else if (inside(x, y, l + 38, b + 120, l + 128, b + 96)) { pulse("park_auto"); select_vdgs_(nullptr); }
+    else if (inside(x, y, l + 38, b + 90, l + 128, b + 66)) { pulse("park_clear"); select_vdgs_(nullptr); }
+    else if (inside(x, y, l + 18, b + 34, l + 212, b + 12)) { pulse("back"); tab_ = 7; transition(); }
     return 1;
   }
 
@@ -602,17 +604,17 @@ int Tablet::mouse_impl(int x, int y, XPLMMouseStatus status) {
         return 1;
       }
     }
-    if (inside(x, y, l + 38, b + 92, l + 128, b + 68)) { pulse("vdgs_auto"); select_vdgs_(nullptr); }
-    else if (inside(x, y, l + 38, b + 62, l + 128, b + 38)) { pulse("vdgs_clear"); select_vdgs_(nullptr); }
-    else if (inside(x, y, l + 18, b + 54, l + 148, b + 30)) { pulse("back"); tab_ = 7; transition(); }
+    if (inside(x, y, l + 38, b + 120, l + 128, b + 96)) { pulse("vdgs_auto"); select_vdgs_(nullptr); }
+    else if (inside(x, y, l + 38, b + 90, l + 128, b + 66)) { pulse("vdgs_clear"); select_vdgs_(nullptr); }
+    else if (inside(x, y, l + 18, b + 34, l + 212, b + 12)) { pulse("back"); tab_ = 7; transition(); }
     return 1;
   }
 
   if (tab_ == 3) {
-    if (inside(x, y, l + 36, b + 108, l + 106, b + 84)) { pulse("set_auto"); toggle_auto_(); }
-    else if (inside(x, y, l + 36, b + 78, l + 106, b + 54)) { pulse("set_dev"); toggle_developer_mode(); }
-    else if (inside(x, y, l + 36, b + 48, l + 106, b + 24)) { pulse("set_reload"); reload_config_(); }
-    else if (inside(x, y, l + 18, b + 54, l + 148, b + 30)) { pulse("back"); tab_ = 7; transition(); }
+    if (inside(x, y, l + 36, b + 138, l + 106, b + 114)) { pulse("set_auto"); toggle_auto_(); }
+    else if (inside(x, y, l + 36, b + 108, l + 106, b + 84)) { pulse("set_dev"); toggle_developer_mode(); }
+    else if (inside(x, y, l + 36, b + 78, l + 106, b + 54)) { pulse("set_reload"); reload_config_(); }
+    else if (inside(x, y, l + 18, b + 34, l + 212, b + 12)) { pulse("back"); tab_ = 7; transition(); }
     return 1;
   }
 
@@ -622,7 +624,7 @@ int Tablet::mouse_impl(int x, int y, XPLMMouseStatus status) {
       else if (inside(x, y, l + 36, t - 104, l + 160, t - 128)) { pulse("dev_parking"); developer_page_ = 2; transition(); }
       else if (inside(x, y, l + 36, t - 134, l + 160, t - 158)) { pulse("dev_reload"); reload_config_(); }
       else if (inside(x, y, l + 36, t - 164, l + 160, t - 188)) { pulse("dev_exit"); toggle_developer_mode(); tab_ = 3; transition(); }
-      else if (inside(x, y, l + 18, b + 54, l + 148, b + 30)) { pulse("back"); tab_ = 3; transition(); }
+      else if (inside(x, y, l + 18, b + 34, l + 212, b + 12)) { pulse("back"); tab_ = 3; transition(); }
       return 1;
     }
 
