@@ -58,6 +58,7 @@ private:
   std::string selected_hangar_id_;
   std::string selected_jetway_id_;
   int developer_page_{};
+  int settings_page_{};
   size_t selected_saved_route_index_{};
   bool delete_route_confirm_{};
   int tab_{7};

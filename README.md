@@ -1,3 +1,5 @@
+# SSA 0.33.0 - UI Polish
+
 # SSA 0.32.5 - Windows Build Fix
 
 # SSA 0.32.4 - Route Save Path Fix
