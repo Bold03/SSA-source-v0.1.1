@@ -1,3 +1,5 @@
+# SSA 0.32.2 - Saved Route Manager
+
 # SSA 0.32.1 - Layout Overlap Fix
 
 # SSA 0.32.0 - Classic UI Refinement

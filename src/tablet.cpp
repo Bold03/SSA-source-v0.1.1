@@ -445,16 +445,62 @@ void Tablet::draw_impl() {
 
     if (developer_page_ == 1) {
       const auto route_state = route_editor_.state();
-      button(l + 36, t - 74, l + 132, t - 98, "PLAN NEW ROUTE", "veh_plan", true);
+      const size_t route_count = route_editor_.saved_route_count();
+      if (route_count == 0) {
+        selected_saved_route_index_ = 0;
+        delete_route_confirm_ = false;
+      } else if (selected_saved_route_index_ >= route_count) {
+        selected_saved_route_index_ = route_count - 1;
+        delete_route_confirm_ = false;
+      }
+
+      button(l + 28, t - 74, l + 140, t - 98, "PLAN NEW ROUTE", "veh_plan", true);
       if (route_state == RouteEditorState::Testing)
-        button(l + 36, t - 104, l + 132, t - 128, "STOP TEST", "veh_test", false, true);
+        button(l + 28, t - 104, l + 140, t - 128, "STOP TEST", "veh_test", false, true);
       else
-        button(l + 36, t - 104, l + 132, t - 128, "TEST ROUTE", "veh_test", true);
-      button(l + 36, t - 134, l + 102, t - 158, "SAVE", "veh_save");
-      button(l + 36, t - 164, l + 132, t - 188, "BACK TO DEV", "veh_back", true);
-      int fy = t - 74;
-      const char* fields[] = {"ROUTE", "MODEL", "SPEED", "LOOP", "HEADING", "STATUS"};
-      for (int i = 0; i < 6; ++i, fy -= 30) button(l + 220, fy, l + 318, fy - 24, fields[i], fields[i]);
+        button(l + 28, t - 104, l + 140, t - 128, "TEST ROUTE", "veh_test", true);
+      button(l + 28, t - 134, l + 92, t - 158, "SAVE", "veh_save");
+      button(l + 28, t - 164, l + 140, t - 188, "BACK TO DEV", "veh_back", true);
+      button(l + 28, b + 104, l + 100, b + 80, "TEST SPIN", "veh_spin");
+
+      label(l + 174, t - 62, "SAVED ROUTES", 0.82f, 0.82f, 0.82f);
+      int route_y = t - 76;
+      const size_t shown_routes = std::min<size_t>(route_count, 5);
+      for (size_t i = 0; i < shown_routes; ++i, route_y -= 30) {
+        const auto* route = route_editor_.saved_route(i);
+        if (!route) continue;
+        char row[128];
+        std::snprintf(row, sizeof(row), "%zu. %.24s%s", i + 1,
+                      route->label.c_str(), route->running ? "  [RUN]" : "");
+        char id[32];
+        std::snprintf(id, sizeof(id), "route_%zu", i);
+        button(l + 174, route_y, r - 24, route_y - 24, row, id,
+               i == selected_saved_route_index_);
+      }
+      if (route_count == 0)
+        label(l + 174, t - 88, "NO SAVED ROUTES", 1.0f, 0.55f, 0.35f);
+
+      const bool route_actions_enabled = route_state == RouteEditorState::Idle && route_count > 0;
+      const auto* selected_route = route_count > 0
+                                       ? route_editor_.saved_route(selected_saved_route_index_)
+                                       : nullptr;
+      if (selected_route) {
+        char selected_info[160];
+        std::snprintf(selected_info, sizeof(selected_info), "SELECTED: %.28s", selected_route->label.c_str());
+        label(l + 174, b + 136, selected_info, 0.70f, 0.76f, 0.82f);
+      }
+      button(l + 174, b + 118, l + 236, b + 94, "EDIT", "route_edit", true, false,
+             !route_actions_enabled);
+      button(l + 244, b + 118, l + 306, b + 94, "START", "route_start", true, false,
+             !route_actions_enabled);
+      button(l + 314, b + 118, l + 376, b + 94, "STOP", "route_stop", false, false,
+             !route_actions_enabled);
+      button(l + 174, b + 84, l + 318, b + 58,
+             delete_route_confirm_ ? "CONFIRM DELETE" : "DELETE ROUTE",
+             "route_delete", false, true, !route_actions_enabled);
+      if (delete_route_confirm_)
+        label(l + 326, b + 68, "CLICK AGAIN TO DELETE", 1.0f, 0.42f, 0.28f);
+
       char live_status[220];
       char area_status[96];
       if (route_state == RouteEditorState::Testing) {
@@ -471,9 +517,7 @@ void Tablet::draw_impl() {
                     route_editor_.status().c_str(),
                     route_editor_.test_speed_mps() * 3.6f,
                     area_status);
-      label(l + 340, t - 88, live_status, 0.72f, 0.78f, 0.84f);
-      button(l + 220, b + 82, l + 278, b + 58, "TEST SPIN", "veh_spin");
-      button(l + 220, b + 52, l + 278, b + 28, "DELETE", "veh_delete", false, true);
+      label(l + 174, b + 38, live_status, 0.72f, 0.78f, 0.84f);
       return;
     }
 
@@ -630,18 +674,83 @@ int Tablet::mouse_impl(int x, int y, XPLMMouseStatus status) {
 
     if (developer_page_ == 1) {
       const auto state = route_editor_.state();
-      if (inside(x, y, l + 36, t - 74, l + 132, t - 98)) { pulse("veh_plan"); if (state == RouteEditorState::Idle) route_editor_.begin_planner(latitude_, longitude_, heading_); }
-      else if (inside(x, y, l + 36, t - 104, l + 132, t - 128)) {
+      const size_t route_count = route_editor_.saved_route_count();
+
+      int route_y = t - 76;
+      const size_t shown_routes = std::min<size_t>(route_count, 5);
+      for (size_t i = 0; i < shown_routes; ++i, route_y -= 30) {
+        if (inside(x, y, l + 174, route_y, r - 24, route_y - 24)) {
+          selected_saved_route_index_ = i;
+          delete_route_confirm_ = false;
+          char id[32];
+          std::snprintf(id, sizeof(id), "route_%zu", i);
+          pulse(id);
+          return 1;
+        }
+      }
+
+      if (inside(x, y, l + 28, t - 74, l + 140, t - 98)) {
+        pulse("veh_plan");
+        delete_route_confirm_ = false;
+        if (state == RouteEditorState::Idle)
+          route_editor_.begin_planner(latitude_, longitude_, heading_);
+      }
+      else if (inside(x, y, l + 28, t - 104, l + 140, t - 128)) {
         pulse("veh_test");
+        delete_route_confirm_ = false;
         if (state == RouteEditorState::Testing)
           route_editor_.stop_test();
         else if (state == RouteEditorState::Editing || state == RouteEditorState::Planning)
           route_editor_.start_test();
       }
-      else if (inside(x, y, l + 36, t - 134, l + 102, t - 158)) { pulse("veh_save"); if (state == RouteEditorState::Editing) route_editor_.save(); }
-      else if (inside(x, y, l + 36, t - 164, l + 132, t - 188)) { pulse("veh_back"); developer_page_ = 0; transition(); }
-      else if (inside(x, y, l + 220, b + 82, l + 278, b + 58)) { pulse("veh_spin"); toggle_vehicle_spin_(); }
-      else if (inside(x, y, l + 220, b + 52, l + 278, b + 28)) { pulse("veh_delete"); route_editor_.cancel(); }
+      else if (inside(x, y, l + 28, t - 134, l + 92, t - 158)) {
+        pulse("veh_save");
+        delete_route_confirm_ = false;
+        if (state == RouteEditorState::Editing) route_editor_.save();
+      }
+      else if (inside(x, y, l + 28, t - 164, l + 140, t - 188)) {
+        pulse("veh_back");
+        delete_route_confirm_ = false;
+        developer_page_ = 0;
+        transition();
+      }
+      else if (inside(x, y, l + 28, b + 104, l + 100, b + 80)) {
+        pulse("veh_spin");
+        toggle_vehicle_spin_();
+      }
+      else if (state == RouteEditorState::Idle && route_count > 0 &&
+               inside(x, y, l + 174, b + 118, l + 236, b + 94)) {
+        pulse("route_edit");
+        delete_route_confirm_ = false;
+        route_editor_.edit_saved_route(selected_saved_route_index_);
+      }
+      else if (state == RouteEditorState::Idle && route_count > 0 &&
+               inside(x, y, l + 244, b + 118, l + 306, b + 94)) {
+        pulse("route_start");
+        delete_route_confirm_ = false;
+        route_editor_.start_saved_route(selected_saved_route_index_);
+      }
+      else if (state == RouteEditorState::Idle && route_count > 0 &&
+               inside(x, y, l + 314, b + 118, l + 376, b + 94)) {
+        pulse("route_stop");
+        delete_route_confirm_ = false;
+        route_editor_.stop_saved_route(selected_saved_route_index_);
+      }
+      else if (state == RouteEditorState::Idle && route_count > 0 &&
+               inside(x, y, l + 174, b + 84, l + 318, b + 58)) {
+        pulse("route_delete");
+        if (!delete_route_confirm_) {
+          delete_route_confirm_ = true;
+        } else {
+          if (route_editor_.delete_saved_route(selected_saved_route_index_)) {
+            const size_t new_count = route_editor_.saved_route_count();
+            if (new_count == 0) selected_saved_route_index_ = 0;
+            else if (selected_saved_route_index_ >= new_count)
+              selected_saved_route_index_ = new_count - 1;
+          }
+          delete_route_confirm_ = false;
+        }
+      }
       return 1;
     }
 

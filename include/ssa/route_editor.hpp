@@ -81,6 +81,7 @@ public:
   void start_saved_route(size_t index);
   void stop_saved_route(size_t index);
   void edit_saved_route(size_t index);
+  bool delete_saved_route(size_t index);
   void start_all_saved_routes();
   void stop_all_saved_routes();
   void select_model(int direction);

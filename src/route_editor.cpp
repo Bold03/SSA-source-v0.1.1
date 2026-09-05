@@ -1341,6 +1341,65 @@ float RouteEditor::traffic_speed_limit(const TrafficRoute& route,
   return speed_limit;
 }
 
+
+bool RouteEditor::delete_saved_route(size_t index) {
+  if (state_ != RouteEditorState::Idle) {
+    status_ = "Stop editing/testing before deleting a route";
+    return false;
+  }
+  if (index >= traffic_routes_.size()) {
+    status_ = "No saved route selected";
+    return false;
+  }
+  if (route_path_.empty() || !fs::exists(route_path_)) {
+    status_ = "Route file not found";
+    return false;
+  }
+
+  const std::string route_id = traffic_routes_[index].id;
+  const std::string route_label = traffic_routes_[index].label;
+  try {
+    std::ifstream input(route_path_);
+    json root = json::parse(input);
+    if (!root.contains("routes") || !root.at("routes").is_array()) {
+      status_ = "Route file has no routes array";
+      return false;
+    }
+
+    auto& routes = root["routes"];
+    bool removed = false;
+    for (auto it = routes.begin(); it != routes.end(); ++it) {
+      const std::string id = it->value("id", std::string{});
+      const std::string label = it->value("label", std::string{});
+      if ((!route_id.empty() && id == route_id) ||
+          (!route_label.empty() && label == route_label)) {
+        routes.erase(it);
+        removed = true;
+        break;
+      }
+    }
+
+    if (!removed) {
+      status_ = "Saved route could not be found in route file";
+      return false;
+    }
+
+    std::ofstream output(route_path_);
+    output << root.dump(2) << '\n';
+    if (!output) throw std::runtime_error("Cannot write route file");
+
+    load_saved_route();
+    for (size_t i = 0; i < traffic_routes_.size(); ++i)
+      if (traffic_routes_[i].autostart) start_saved_route(i);
+
+    status_ = "Deleted route: " + route_label;
+    return true;
+  } catch (const std::exception& e) {
+    status_ = std::string("Delete route failed: ") + e.what();
+    return false;
+  }
+}
+
 void RouteEditor::start_all_saved_routes() {
   for (size_t i = 0; i < traffic_routes_.size(); ++i) start_saved_route(i);
   if (!traffic_routes_.empty()) status_ = "All background traffic started";
